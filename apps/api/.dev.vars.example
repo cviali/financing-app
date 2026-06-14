@@ -1,0 +1,5 @@
+# API Worker secrets – DO NOT COMMIT
+# Copy this to .dev.vars and fill in values
+
+JWT_SECRET=change-me-32-char-minimum-secret-key
+CSRF_SECRET=change-me-32-char-minimum-csrf-secret
