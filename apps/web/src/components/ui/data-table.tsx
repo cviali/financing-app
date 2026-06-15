@@ -1,112 +1,170 @@
 "use client";
 
+import { useState } from "react";
 import {
   useReactTable,
   getCoreRowModel,
-  getSortedRowModel,
   getFilteredRowModel,
+  getSortedRowModel,
+  getPaginationRowModel,
   flexRender,
   type ColumnDef,
   type SortingState,
-  type ColumnFiltersState,
 } from "@tanstack/react-table";
-import { useState } from "react";
-import { cn } from "@/lib/utils";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { ChevronUp, ChevronDown, ChevronsUpDown } from "lucide-react";
 
 interface DataTableProps<TData> {
   columns: ColumnDef<TData>[];
   data: TData[];
   filterPlaceholder?: string;
-  globalFilterKey?: string;
 }
 
-export function DataTable<TData>({ columns, data, filterPlaceholder = "Search…" }: DataTableProps<TData>) {
-  const [sorting, setSorting] = useState<SortingState>([]);
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+export function DataTable<TData>({
+  columns,
+  data,
+  filterPlaceholder = "Search…",
+}: DataTableProps<TData>) {
   const [globalFilter, setGlobalFilter] = useState("");
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [pagination, setPagination] = useState({ pageIndex: 0, pageSize: 20 });
 
   const table = useReactTable({
     data,
     columns,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    onSortingChange: setSorting,
-    onColumnFiltersChange: setColumnFilters,
+    state: { globalFilter, sorting, pagination },
     onGlobalFilterChange: setGlobalFilter,
-    state: { sorting, columnFilters, globalFilter },
+    onSortingChange: setSorting,
+    onPaginationChange: setPagination,
+    getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
   });
 
   return (
-    <div className="space-y-3">
-      <input
+    <div className="space-y-4">
+      <Input
+        placeholder={filterPlaceholder}
         value={globalFilter}
         onChange={(e) => setGlobalFilter(e.target.value)}
-        placeholder={filterPlaceholder}
-        className="w-full max-w-xs rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        className="max-w-sm"
       />
 
       {/* Desktop table */}
-      <div className="hidden sm:block overflow-auto rounded-lg border bg-white shadow-sm">
-        <table className="w-full text-sm">
-          <thead className="border-b bg-gray-50">
+      <div className="hidden md:block rounded-md border">
+        <Table>
+          <TableHeader>
             {table.getHeaderGroups().map((hg) => (
-              <tr key={hg.id}>
+              <TableRow key={hg.id}>
                 {hg.headers.map((header) => (
-                  <th
+                  <TableHead
                     key={header.id}
                     onClick={header.column.getToggleSortingHandler()}
-                    className={cn(
-                      "px-4 py-3 text-left font-medium text-gray-600 whitespace-nowrap",
-                      header.column.getCanSort() && "cursor-pointer select-none hover:text-gray-900",
-                    )}
+                    className={header.column.getCanSort() ? "cursor-pointer select-none" : ""}
                   >
-                    {flexRender(header.column.columnDef.header, header.getContext())}
-                    {header.column.getIsSorted() === "asc" ? " ↑" : header.column.getIsSorted() === "desc" ? " ↓" : ""}
-                  </th>
+                    <div className="flex items-center gap-1">
+                      {flexRender(header.column.columnDef.header, header.getContext())}
+                      {header.column.getCanSort() && (
+                        <span className="text-muted-foreground">
+                          {header.column.getIsSorted() === "asc" ? (
+                            <ChevronUp className="h-3.5 w-3.5" />
+                          ) : header.column.getIsSorted() === "desc" ? (
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          ) : (
+                            <ChevronsUpDown className="h-3.5 w-3.5 opacity-40" />
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  </TableHead>
                 ))}
-              </tr>
+              </TableRow>
             ))}
-          </thead>
-          <tbody className="divide-y">
-            {table.getRowModel().rows.map((row) => (
-              <tr key={row.id} className="hover:bg-gray-50">
-                {row.getVisibleCells().map((cell) => (
-                  <td key={cell.id} className="px-4 py-3 whitespace-nowrap">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {table.getRowModel().rows.length === 0 && (
-          <div className="py-10 text-center text-sm text-gray-400">No results.</div>
-        )}
+          </TableHeader>
+          <TableBody>
+            {table.getRowModel().rows.length > 0 ? (
+              table.getRowModel().rows.map((row) => (
+                <TableRow key={row.id}>
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell key={cell.id}>
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
+                  No records found.
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
       </div>
 
       {/* Mobile card list */}
-      <ul className="sm:hidden space-y-2">
+      <div className="md:hidden space-y-3">
         {table.getRowModel().rows.length === 0 ? (
-          <li className="text-center text-sm text-gray-400 py-8">No results.</li>
+          <p className="text-center text-sm text-muted-foreground py-8">No records found.</p>
         ) : (
           table.getRowModel().rows.map((row) => (
-            <li key={row.id} className="rounded-lg border bg-white p-4 shadow-sm space-y-2">
-              {row.getVisibleCells().map((cell) => (
-                <div key={cell.id} className="flex items-start justify-between text-sm">
-                  <span className="font-medium text-gray-500 mr-2 whitespace-nowrap">
-                    {typeof cell.column.columnDef.header === "string"
-                      ? cell.column.columnDef.header
-                      : cell.column.id}
-                    :
-                  </span>
-                  <span className="text-right">{flexRender(cell.column.columnDef.cell, cell.getContext())}</span>
-                </div>
-              ))}
-            </li>
+            <div key={row.id} className="rounded-lg border bg-card p-4 shadow-sm space-y-2">
+              {row.getVisibleCells().map((cell) => {
+                const headerLabel = String(cell.column.columnDef.header ?? cell.column.id);
+                if (headerLabel === "Actions") {
+                  return (
+                    <div key={cell.id} className="pt-2 border-t">
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </div>
+                  );
+                }
+                return (
+                  <div key={cell.id} className="flex justify-between gap-2 text-sm">
+                    <span className="font-medium text-muted-foreground shrink-0">{headerLabel}</span>
+                    <span className="text-right">{flexRender(cell.column.columnDef.cell, cell.getContext())}</span>
+                  </div>
+                );
+              })}
+            </div>
           ))
         )}
-      </ul>
+      </div>
+
+      {/* Pagination */}
+      {table.getPageCount() > 1 && (
+        <div className="flex items-center justify-end gap-2">
+          <span className="text-sm text-muted-foreground">
+            Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => table.previousPage()}
+            disabled={!table.getCanPreviousPage()}
+          >
+            Previous
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => table.nextPage()}
+            disabled={!table.getCanNextPage()}
+          >
+            Next
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

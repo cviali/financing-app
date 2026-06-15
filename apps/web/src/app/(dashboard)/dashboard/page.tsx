@@ -2,25 +2,54 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { formatIDR } from "@/lib/format";
+import { formatIDR, formatDate } from "@/lib/format";
+import { paymentSourceBadge, directionBadge } from "@/components/ui/badge";
+import {
+  Card, CardContent, CardDescription, CardHeader, CardTitle,
+} from "@/components/ui/card";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { Spending, Project } from "@repo/shared";
+
+interface PettyCashMutation {
+  id: string;
+  projectName: string | null;
+  projectCode: string | null;
+  direction: "in" | "out";
+  amountIdr: number;
+  balanceAfterIdr: number;
+  note: string | null;
+  createdByUsername: string | null;
+  createdAt: string;
+}
 
 interface DashboardStats {
   totalThisMonth: number;
   totalAllTime: number;
   activeProjects: number;
-  totalPettyCash: number;
+  pettyCashBalance: number;
   recentSpendings: Spending[];
+  recentMutations: PettyCashMutation[];
   byProject: Record<string, { name: string; code: string; total: number }>;
-  byCategory: Record<string, { name: string; total: number }>;
 }
 
-function MetricCard({ title, value }: { title: string; value: string }) {
+function MetricCard({ title, value, loading, highlight }: {
+  title: string;
+  value: string;
+  loading: boolean;
+  highlight?: boolean;
+}) {
   return (
-    <div className="rounded-xl border bg-white p-6 shadow-sm">
-      <p className="text-sm font-medium text-gray-500">{title}</p>
-      <p className="mt-2 text-2xl font-bold tabular-nums">{value}</p>
-    </div>
+    <Card className={highlight ? "border-emerald-200 bg-emerald-50/50" : ""}>
+      <CardHeader className="pb-2">
+        <CardDescription className={highlight ? "text-emerald-700" : ""}>{title}</CardDescription>
+        <CardTitle className={`text-2xl tabular-nums ${highlight ? "text-emerald-800" : ""}`}>
+          {loading ? <Skeleton className="h-8 w-36" /> : value}
+        </CardTitle>
+      </CardHeader>
+    </Card>
   );
 }
 
@@ -31,16 +60,17 @@ export default function DashboardPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [spendingsRes, projectsRes] = await Promise.all([
+        const [spendingsRes, projectsRes, pettyCashRes] = await Promise.all([
           api.spendings.list(),
           api.projects.list(),
+          api.pettyCash.global(),
         ]);
-
         const all = spendingsRes.data;
         const projects = projectsRes.data;
+        const { balance: pettyCashBalance, recentMutations } = pettyCashRes.data;
 
-        const now = new Date();
-        const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+        const thisMonthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+          .toISOString().slice(0, 10);
 
         const totalThisMonth = all
           .filter((s) => s.spendingDate >= thisMonthStart)
@@ -49,34 +79,23 @@ export default function DashboardPage() {
         const totalAllTime = all.reduce((sum, s) => sum + s.amountIdr, 0);
         const activeProjects = projects.filter((p) => p.status === "active").length;
 
-        // Aggregate petty cash from project details would require N+1 calls;
-        // show as "fetch separately" for now – the project detail page shows per-project balance
-        const totalPettyCash = 0;
-
         const byProject: DashboardStats["byProject"] = {};
-        const byCategory: DashboardStats["byCategory"] = {};
-
         for (const s of all) {
           if (!byProject[s.projectId]) {
             const p = projects.find((p) => p.id === s.projectId);
             byProject[s.projectId] = { name: p?.name ?? s.projectId, code: p?.code ?? "", total: 0 };
           }
           byProject[s.projectId]!.total += s.amountIdr;
-
-          if (!byCategory[s.categoryId]) {
-            byCategory[s.categoryId] = { name: s.categoryId, total: 0 };
-          }
-          byCategory[s.categoryId]!.total += s.amountIdr;
         }
 
         setStats({
           totalThisMonth,
           totalAllTime,
           activeProjects,
-          totalPettyCash,
-          recentSpendings: all.slice(0, 5),
+          pettyCashBalance,
+          recentSpendings: all.slice(0, 6),
+          recentMutations,
           byProject,
-          byCategory,
         });
       } catch (e) {
         console.error(e);
@@ -87,68 +106,155 @@ export default function DashboardPage() {
     void load();
   }, []);
 
-  if (loading) return <p className="text-sm text-gray-500">Loading dashboard…</p>;
-  if (!stats) return <p className="text-sm text-red-500">Failed to load dashboard.</p>;
-
   return (
-    <div className="space-y-8">
-      <h1 className="text-2xl font-bold">Dashboard</h1>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+        <p className="text-muted-foreground text-sm">Overview of your finance activity</p>
+      </div>
 
-      {/* Metrics */}
+      {/* Metric cards */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard title="Spending This Month" value={formatIDR(stats.totalThisMonth)} />
-        <MetricCard title="Total Spending (All Time)" value={formatIDR(stats.totalAllTime)} />
-        <MetricCard title="Active Projects" value={String(stats.activeProjects)} />
-        <MetricCard title="Total Petty Cash" value={formatIDR(stats.totalPettyCash)} />
+        <MetricCard title="Spending This Month" value={loading ? "" : formatIDR(stats?.totalThisMonth ?? 0)} loading={loading} />
+        <MetricCard title="Total Spending (All Time)" value={loading ? "" : formatIDR(stats?.totalAllTime ?? 0)} loading={loading} />
+        <MetricCard title="Active Projects" value={loading ? "" : String(stats?.activeProjects ?? 0)} loading={loading} />
+        <MetricCard
+          title="Shared Petty Cash Balance"
+          value={loading ? "" : formatIDR(stats?.pettyCashBalance ?? 0)}
+          loading={loading}
+          highlight
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Recent spendings */}
-        <div className="rounded-xl border bg-white p-6 shadow-sm">
-          <h2 className="text-base font-semibold mb-4">Recent Spendings</h2>
-          {stats.recentSpendings.length === 0 ? (
-            <p className="text-sm text-gray-400">No spendings yet.</p>
-          ) : (
-            <ul className="divide-y">
-              {stats.recentSpendings.map((s) => (
-                <li key={s.id} className="flex items-center justify-between py-3">
-                  <div>
-                    <p className="text-sm font-medium">{s.description ?? "—"}</p>
-                    <p className="text-xs text-gray-400">{s.spendingDate}</p>
-                  </div>
-                  <span className="text-sm font-semibold tabular-nums text-right">
-                    {formatIDR(s.amountIdr)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Recent Spendings</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            {loading ? (
+              <div className="p-6 space-y-3">
+                {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Source</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {stats?.recentSpendings.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="text-center text-muted-foreground py-6">No spendings yet.</TableCell>
+                    </TableRow>
+                  ) : stats?.recentSpendings.map((s) => (
+                    <TableRow key={s.id}>
+                      <TableCell className="text-muted-foreground text-xs">{formatDate(s.spendingDate)}</TableCell>
+                      <TableCell className="max-w-[140px] truncate text-sm">{s.description ?? "—"}</TableCell>
+                      <TableCell>{paymentSourceBadge(s.paymentSource)}</TableCell>
+                      <TableCell className="text-right tabular-nums font-medium text-sm">{formatIDR(s.amountIdr)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
 
-        {/* By project */}
-        <div className="rounded-xl border bg-white p-6 shadow-sm">
-          <h2 className="text-base font-semibold mb-4">Spending by Project</h2>
-          {Object.values(stats.byProject).length === 0 ? (
-            <p className="text-sm text-gray-400">No data yet.</p>
-          ) : (
-            <ul className="divide-y">
-              {Object.values(stats.byProject)
-                .sort((a, b) => b.total - a.total)
-                .map((p) => (
-                  <li key={p.code} className="flex items-center justify-between py-3">
-                    <div>
-                      <p className="text-sm font-medium">{p.name}</p>
-                      <p className="text-xs text-gray-400">{p.code}</p>
-                    </div>
-                    <span className="text-sm font-semibold tabular-nums text-right">
-                      {formatIDR(p.total)}
-                    </span>
-                  </li>
-                ))}
-            </ul>
-          )}
-        </div>
+        {/* Petty cash recent activity */}
+        <Card className="border-emerald-200">
+          <CardHeader>
+            <CardTitle className="text-base">Petty Cash Activity</CardTitle>
+            <CardDescription>
+              Shared pool balance: {loading ? "…" : <span className="font-semibold text-emerald-700">{formatIDR(stats?.pettyCashBalance ?? 0)}</span>}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            {loading ? (
+              <div className="p-6 space-y-3">
+                {[...Array(4)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Project</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead className="text-right">Amount</TableHead>
+                    <TableHead className="text-right">Balance</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {stats?.recentMutations.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
+                        No petty cash activity yet.
+                      </TableCell>
+                    </TableRow>
+                  ) : stats?.recentMutations.map((m) => (
+                    <TableRow key={m.id}>
+                      <TableCell className="text-muted-foreground text-xs">{formatDate(m.createdAt)}</TableCell>
+                      <TableCell>
+                        {m.projectName ? (
+                          <span className="text-sm font-medium">{m.projectName}</span>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell>{directionBadge(m.direction)}</TableCell>
+                      <TableCell className="text-right tabular-nums text-sm font-medium">{formatIDR(m.amountIdr)}</TableCell>
+                      <TableCell className="text-right tabular-nums text-xs text-muted-foreground">{formatIDR(m.balanceAfterIdr)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Spending by project */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Spending by Project</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="p-6 space-y-3">
+              {[...Array(3)].map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Code</TableHead>
+                  <TableHead>Project</TableHead>
+                  <TableHead className="text-right">Total Spending</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {Object.values(stats?.byProject ?? {}).length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={3} className="text-center text-muted-foreground py-6">No data yet.</TableCell>
+                  </TableRow>
+                ) : Object.values(stats?.byProject ?? {}).sort((a, b) => b.total - a.total).map((p) => (
+                  <TableRow key={p.code}>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{p.code}</TableCell>
+                    <TableCell className="font-medium text-sm">{p.name}</TableCell>
+                    <TableCell className="text-right tabular-nums font-medium text-sm">{formatIDR(p.total)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

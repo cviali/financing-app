@@ -3,13 +3,13 @@ import { PAYMENT_SOURCES, ALLOWED_RECEIPT_MIME_TYPES } from "../constants.js";
 
 export const createSpendingSchema = z
   .object({
-    projectId: z.string().min(1),
-    categoryId: z.string().min(1),
-    amountIdr: z.number().int().positive("Amount must be a positive integer IDR"),
-    paymentSource: z.enum(PAYMENT_SOURCES),
-    pettyCashCutIdr: z.number().int().min(0, "Petty cash cut must be >= 0").default(0),
-    description: z.string().max(500).optional(),
-    spendingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Must be YYYY-MM-DD"),
+    projectId: z.string().min(1, "Please select a project"),
+    categoryId: z.string().min(1, "Please select a category"),
+    amountIdr: z.number().int("Amount must be a whole number").positive("Amount must be greater than zero"),
+    paymentSource: z.enum(PAYMENT_SOURCES, { message: "Please select a payment source" }),
+    pettyCashCutIdr: z.number().int("Must be a whole number").min(0, "Petty cash cut cannot be negative").default(0),
+    description: z.string().max(500, "Description is too long (max 500 characters)").optional(),
+    spendingDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Please enter a valid date"),
   })
   .refine(
     (d) => {
@@ -18,7 +18,7 @@ export const createSpendingSchema = z
       }
       return true;
     },
-    { message: "petty_cash_cut_idr must be 0 for project_petty_cash payments", path: ["pettyCashCutIdr"] },
+    { message: "Petty cash cut must be zero for Project Petty Cash payments", path: ["pettyCashCutIdr"] },
   )
   .refine(
     (d) => {
@@ -27,7 +27,7 @@ export const createSpendingSchema = z
       }
       return true;
     },
-    { message: "petty_cash_cut_idr must be <= amount_idr", path: ["pettyCashCutIdr"] },
+    { message: "Petty cash cut cannot exceed the total amount", path: ["pettyCashCutIdr"] },
   );
 
 export const updateSpendingSchema = z

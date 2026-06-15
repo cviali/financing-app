@@ -8,20 +8,20 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "finance-yanti-db",
-      "database_id": "YOUR_D1_DATABASE_ID"
+      "database_name": "financing-app",
+      "database_id": "47a8483c-4fcf-46f6-bb74-b5c9f8049d3f"
     }
   ],
 
   "r2_buckets": [
     {
       "binding": "RECEIPTS_BUCKET",
-      "bucket_name": "finance-yanti-receipts"
+      "bucket_name": "financing-app-receipts"
     }
   ],
 
   "vars": {
-    "ENVIRONMENT": "development",
-    "CORS_ORIGIN": "http://localhost:3000"
+    "ENVIRONMENT": "production",
+    "CORS_ORIGIN": "https://financing-app-web.christianviali0.workers.dev"
   }
 }

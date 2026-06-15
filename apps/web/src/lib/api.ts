@@ -1,7 +1,17 @@
-const API_BASE = process.env["NEXT_PUBLIC_API_URL"] ?? "http://localhost:8787";
+// Direct call to the API Worker — cookies are shared via .christianviali0.workers.dev domain
+const API_BASE = "https://financing-app-api.christianviali0.workers.dev";
 
-// Reads the csrf_token cookie (set as non-HttpOnly by the API on login)
+// In-memory CSRF token cache — set from login/me response bodies.
+// Avoids relying on document.cookie cross-origin visibility (workers.dev PSL issue).
+let _csrfToken = "";
+
+export function setCsrfToken(token: string) {
+  _csrfToken = token;
+}
+
 function getCsrfToken(): string {
+  if (_csrfToken) return _csrfToken;
+  // Fallback: try cookie (works when both subdomains are truly same-site)
   if (typeof document === "undefined") return "";
   const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]*)/);
   return match ? decodeURIComponent(match[1] ?? "") : "";
@@ -35,15 +45,22 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
 // Auth
 export const api = {
   auth: {
-    login: (body: { username: string; password: string }) =>
-      apiFetch<{ data: { id: string; username: string; displayName: string; role: string; mustChangePassword: boolean } }>(
+    login: async (body: { username: string; password: string }) => {
+      const res = await apiFetch<{ data: { id: string; username: string; displayName: string; role: string; mustChangePassword: boolean; csrfToken?: string } }>(
         "/auth/login",
         { method: "POST", body: JSON.stringify(body) },
-      ),
+      );
+      if (res.data.csrfToken) setCsrfToken(res.data.csrfToken);
+      return res;
+    },
     logout: () => apiFetch<{ data: { ok: boolean } }>("/auth/logout", { method: "POST" }),
-    me: () => apiFetch<{ data: import("@repo/shared").User }>("/auth/me"),
+    me: async () => {
+      const res = await apiFetch<{ data: import("@repo/shared").User & { csrfToken?: string } }>("/auth/me");
+      if (res.data.csrfToken) setCsrfToken(res.data.csrfToken);
+      return res;
+    },
     changePassword: (body: { currentPassword: string; newPassword: string; confirmPassword: string }) =>
-      apiFetch<{ data: { ok: boolean } }>("/auth/change-password", {
+      apiFetch<{ data: { ok: boolean; csrfToken?: string } }>("/auth/change-password", {
         method: "POST",
         body: JSON.stringify(body),
       }),
@@ -116,5 +133,45 @@ export const api = {
   exports: {
     spendings: () => `${API_BASE}/exports/spendings`,
     projectPettyCash: (id: string) => `${API_BASE}/exports/projects/${id}/petty-cash`,
+  },
+  pettyCash: {
+    global: () =>
+      apiFetch<{
+        data: {
+          balance: number;
+          recentMutations: Array<{
+            id: string;
+            projectId: string;
+            projectName: string | null;
+            projectCode: string | null;
+            spendingId: string | null;
+            direction: "in" | "out";
+            amountIdr: number;
+            balanceAfterIdr: number;
+            note: string | null;
+            createdByUsername: string | null;
+            createdAt: string;
+          }>;
+        };
+      }>("/petty-cash"),
+    mutations: () =>
+      apiFetch<{
+        data: {
+          balance: number;
+          mutations: Array<{
+            id: string;
+            projectId: string;
+            projectName: string | null;
+            projectCode: string | null;
+            spendingId: string | null;
+            direction: "in" | "out";
+            amountIdr: number;
+            balanceAfterIdr: number;
+            note: string | null;
+            createdByUsername: string | null;
+            createdAt: string;
+          }>;
+        };
+      }>("/petty-cash/mutations"),
   },
 };

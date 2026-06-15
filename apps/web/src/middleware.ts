@@ -1,26 +1,20 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 // Public paths that don't need auth
-const PUBLIC_PATHS = ["/login"];
+const PUBLIC_PATHS = ["/login", "/change-password"];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Allow public paths and API/static
+  // Pass through everything — auth is enforced client-side via AuthContext
+  // and server-side via the API Worker. The session cookie is on the API domain
+  // (.christianviali0.workers.dev), not the web domain, so middleware can't read it.
   if (
-    PUBLIC_PATHS.some((p) => pathname.startsWith(p)) ||
     pathname.startsWith("/_next") ||
-    pathname.startsWith("/favicon")
+    pathname.startsWith("/favicon") ||
+    pathname.startsWith("/api/")
   ) {
     return NextResponse.next();
-  }
-
-  // Check for session cookie
-  const session = req.cookies.get("session");
-  if (!session) {
-    const url = req.nextUrl.clone();
-    url.pathname = "/login";
-    return NextResponse.redirect(url);
   }
 
   return NextResponse.next();

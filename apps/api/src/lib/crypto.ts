@@ -1,7 +1,7 @@
 // PBKDF2 password hashing via WebCrypto (Workers-native, no WASM needed)
 
 const SALT_LEN = 16;
-const ITERATIONS = 310_000;
+const ITERATIONS = 100_000; // Cloudflare Workers WebCrypto max
 const KEY_LEN = 32;
 const ALGO = "SHA-256";
 

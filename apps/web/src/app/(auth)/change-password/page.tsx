@@ -8,22 +8,39 @@ import { changePasswordSchema, type ChangePasswordInput } from "@repo/shared/sch
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/auth";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { ShieldCheck } from "lucide-react";
+
+const FIELDS = [
+  { name: "currentPassword" as const, label: "Current Password", autoComplete: "current-password" },
+  { name: "newPassword" as const, label: "New Password", autoComplete: "new-password" },
+  { name: "confirmPassword" as const, label: "Confirm New Password", autoComplete: "new-password" },
+];
 
 export default function ChangePasswordPage() {
   const router = useRouter();
   const { refetch } = useAuth();
   const [loading, setLoading] = useState(false);
 
-  const { register, handleSubmit, formState: { errors } } = useForm<ChangePasswordInput>({
+  const form = useForm<ChangePasswordInput>({
     resolver: zodResolver(changePasswordSchema),
+    defaultValues: { currentPassword: "", newPassword: "", confirmPassword: "" },
   });
 
   async function onSubmit(data: ChangePasswordInput) {
     setLoading(true);
     try {
-      await api.auth.changePassword(data);
+      const res = await api.auth.changePassword(data);
+      // Cache the new CSRF token issued after password change
+      if (res.data.csrfToken) {
+        const { setCsrfToken } = await import("@/lib/api");
+        setCsrfToken(res.data.csrfToken);
+      }
       await refetch();
-      toast.success("Password changed successfully");
+      toast.success("Password changed — welcome!");
       router.push("/dashboard");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to change password");
@@ -33,47 +50,53 @@ export default function ChangePasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-sm rounded-xl border bg-white p-8 shadow-sm">
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold tracking-tight">Change Password</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            You must change your password before continuing.
-          </p>
+    <div className="min-h-screen grid place-items-center bg-zinc-50 px-4">
+      <div className="w-full max-w-sm">
+        <div className="mb-6 text-center">
+          <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500 text-white mb-3">
+            <ShieldCheck className="h-6 w-6" />
+          </div>
+          <h1 className="text-xl font-bold text-zinc-900">Set a new password</h1>
+          <p className="text-sm text-zinc-500 mt-1">You must change your password before continuing.</p>
         </div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          {(["currentPassword", "newPassword", "confirmPassword"] as const).map((field) => (
-            <div key={field}>
-              <label className="block text-sm font-medium text-gray-700 mb-1" htmlFor={field}>
-                {field === "currentPassword"
-                  ? "Current Password"
-                  : field === "newPassword"
-                    ? "New Password"
-                    : "Confirm Password"}
-              </label>
-              <input
-                id={field}
-                type="password"
-                autoComplete={field === "currentPassword" ? "current-password" : "new-password"}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
-                disabled={loading}
-                {...register(field)}
-              />
-              {errors[field] && (
-                <p className="mt-1 text-xs text-red-500">{errors[field]?.message}</p>
-              )}
-            </div>
-          ))}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60"
-          >
-            {loading ? "Saving…" : "Change Password"}
-          </button>
-        </form>
+        <Card className="shadow-md">
+          <CardHeader className="space-y-1 pb-4">
+            <CardTitle className="text-lg">Change Password</CardTitle>
+            <CardDescription>Password must be at least 10 characters.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                {FIELDS.map(({ name, label, autoComplete }) => (
+                  <FormField
+                    key={name}
+                    control={form.control}
+                    name={name}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{label}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="password"
+                            placeholder="••••••••••"
+                            autoComplete={autoComplete}
+                            disabled={loading}
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ))}
+                <Button type="submit" className="w-full mt-2" disabled={loading}>
+                  {loading ? "Saving…" : "Change Password & Continue"}
+                </Button>
+              </form>
+            </Form>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

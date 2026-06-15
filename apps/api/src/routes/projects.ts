@@ -5,6 +5,7 @@ import { projects, pettyCashMutations } from "@repo/db/schema";
 import { createProjectSchema, updateProjectSchema } from "@repo/shared/schemas/projects";
 import { writeAuditLog } from "../lib/audit.js";
 import { dbMiddleware, authMiddleware, adminMiddleware } from "../middleware/auth.js";
+import { getGlobalBalance } from "../services/pettyCash.js";
 import type { AppContext } from "../types/context.js";
 
 export const projectsRouter = new Hono<AppContext>();
@@ -58,17 +59,8 @@ projectsRouter.get("/:id", async (c) => {
   const project = await db.select().from(projects).where(eq(projects.id, id)).get();
   if (!project) return c.json({ error: "Project not found" }, 404);
 
-  // Compute current petty cash balance
-  const lastMutation = await db
-    .select({ balanceAfterIdr: pettyCashMutations.balanceAfterIdr })
-    .from(pettyCashMutations)
-    .where(eq(pettyCashMutations.projectId, id))
-    .orderBy(pettyCashMutations.createdAt, pettyCashMutations.id)
-    .all();
-
-  const pettyCashBalance = lastMutation.length > 0
-    ? lastMutation[lastMutation.length - 1]!.balanceAfterIdr
-    : 0;
+  // Global shared petty cash balance
+  const pettyCashBalance = await getGlobalBalance(db);
 
   return c.json({ data: { ...project, pettyCashBalance } });
 });
@@ -124,7 +116,7 @@ projectsRouter.post("/:id/archive", adminMiddleware, async (c) => {
   return c.json({ data: { ok: true } });
 });
 
-// GET /projects/:id/petty-cash
+// GET /projects/:id/petty-cash — project-scoped mutations + global balance
 projectsRouter.get("/:id/petty-cash", async (c) => {
   const db = c.get("db");
   const { id } = c.req.param();
@@ -132,16 +124,15 @@ projectsRouter.get("/:id/petty-cash", async (c) => {
   const project = await db.select().from(projects).where(eq(projects.id, id)).get();
   if (!project) return c.json({ error: "Project not found" }, 404);
 
-  const mutations = await db
-    .select()
-    .from(pettyCashMutations)
-    .where(eq(pettyCashMutations.projectId, id))
-    .orderBy(pettyCashMutations.createdAt)
-    .all();
-
-  const balance = mutations.length > 0
-    ? mutations[mutations.length - 1]!.balanceAfterIdr
-    : 0;
+  const [balance, mutations] = await Promise.all([
+    getGlobalBalance(db),
+    db
+      .select()
+      .from(pettyCashMutations)
+      .where(eq(pettyCashMutations.projectId, id))
+      .orderBy(pettyCashMutations.createdAt)
+      .all(),
+  ]);
 
   return c.json({ data: { balance, mutations } });
 });

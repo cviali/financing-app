@@ -1,31 +1,85 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { type ColumnDef } from "@tanstack/react-table";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/auth";
 import { DataTable } from "@/components/ui/data-table";
 import { roleBadge, statusBadge } from "@/components/ui/badge";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { createUserSchema } from "@repo/shared/schemas/auth";
+import type { z } from "zod";
+import { MoreHorizontal, Plus } from "lucide-react";
 import type { User } from "@repo/shared";
-import { useRouter } from "next/navigation";
+
+type CreateUserInput = z.output<typeof createUserSchema>;
+type CreateUserFormInput = z.input<typeof createUserSchema>;
 
 export default function UsersPage() {
   const { user: me } = useAuth();
   const router = useRouter();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({
-    username: "",
-    displayName: "",
-    role: "staff" as "admin" | "staff",
-    password: "",
-    status: "active" as "active" | "disabled",
+  const [resetDialog, setResetDialog] = useState<{ id: string; username: string; open: boolean }>({ id: "", username: "", open: false });
+  const [newPassword, setNewPassword] = useState("");
+  const [resetting, setResetting] = useState(false);
+
+  const form = useForm<CreateUserFormInput>({
+    resolver: zodResolver(createUserSchema),
+    defaultValues: { role: "staff", status: "active", mustChangePassword: true },
   });
 
-  // Guard: only admin can access this page
   useEffect(() => {
     if (me && me.role !== "admin") router.push("/dashboard");
   }, [me, router]);
@@ -41,14 +95,13 @@ export default function UsersPage() {
 
   useEffect(() => { void load(); }, []);
 
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
+  async function onSubmit(data: CreateUserFormInput) {
     setSaving(true);
     try {
-      await api.users.create({ ...form, mustChangePassword: true });
+      await api.users.create(data as unknown as CreateUserInput);
       toast.success("User created");
-      setShowForm(false);
-      setForm({ username: "", displayName: "", role: "staff", password: "", status: "active" });
+      setSheetOpen(false);
+      form.reset({ role: "staff", status: "active", mustChangePassword: true });
       void load();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to create user");
@@ -57,14 +110,18 @@ export default function UsersPage() {
     }
   }
 
-  async function handleReset(id: string) {
-    const pw = prompt("New temporary password (min 10 chars):");
-    if (!pw) return;
+  async function handleReset() {
+    if (!newPassword.trim()) { toast.error("Password is required"); return; }
+    setResetting(true);
     try {
-      await api.users.resetPassword(id, pw);
+      await api.users.resetPassword(resetDialog.id, newPassword);
       toast.success("Password reset");
+      setResetDialog({ id: "", username: "", open: false });
+      setNewPassword("");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -92,34 +149,49 @@ export default function UsersPage() {
   }
 
   const columns: ColumnDef<User>[] = [
-    { accessorKey: "username", header: "Username" },
+    { accessorKey: "username", header: "Username", cell: (i) => <span className="font-mono text-sm">{i.getValue<string>()}</span> },
     { accessorKey: "displayName", header: "Display Name" },
     { accessorKey: "role", header: "Role", cell: (i) => roleBadge(i.getValue<string>()) },
     { accessorKey: "status", header: "Status", cell: (i) => statusBadge(i.getValue<string>()) },
     {
       accessorKey: "mustChangePassword",
-      header: "Must Change PW",
-      cell: (i) => (i.getValue<boolean>() ? "Yes" : "No"),
+      header: "Force PW Change",
+      cell: (i) => <span className={i.getValue<boolean>() ? "text-amber-600 text-xs font-medium" : "text-muted-foreground text-xs"}>{i.getValue<boolean>() ? "Yes" : "No"}</span>,
     },
-    { accessorKey: "lastLoginAt", header: "Last Login", cell: (i) => i.getValue<string | null>() ?? "Never" },
+    {
+      accessorKey: "lastLoginAt",
+      header: "Last Login",
+      cell: (i) => <span className="text-muted-foreground text-xs">{i.getValue<string | null>() ? new Date(i.getValue<string>()).toLocaleDateString("id-ID") : "Never"}</span>,
+    },
     {
       id: "actions",
       header: "Actions",
       cell: ({ row }) => {
         const u = row.original;
-        if (u.id === me?.id) return <span className="text-xs text-gray-400">You</span>;
+        if (u.id === me?.id) return <span className="text-xs text-muted-foreground">You</span>;
         return (
-          <div className="flex gap-2 flex-wrap">
-            <button onClick={() => handleReset(u.id)} className="text-xs text-blue-600 hover:underline">
-              Reset PW
-            </button>
-            <button onClick={() => handleToggleRole(u)} className="text-xs text-purple-600 hover:underline">
-              {u.role === "admin" ? "→ Staff" : "→ Admin"}
-            </button>
-            <button onClick={() => handleToggleStatus(u)} className="text-xs text-orange-500 hover:underline">
-              {u.status === "active" ? "Disable" : "Enable"}
-            </button>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="h-8 w-8" />}>
+            <MoreHorizontal className="h-4 w-4" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel className="text-muted-foreground text-xs">{u.username}</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setResetDialog({ id: u.id, username: u.username, open: true })}>
+                Reset Password
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleToggleRole(u)}>
+                Make {u.role === "admin" ? "Staff" : "Admin"}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className={u.status === "active" ? "text-destructive focus:text-destructive" : ""}
+                onClick={() => handleToggleStatus(u)}
+              >
+                {u.status === "active" ? "Disable" : "Enable"}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         );
       },
     },
@@ -130,61 +202,123 @@ export default function UsersPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Users</h1>
-        {!showForm && (
-          <button
-            onClick={() => setShowForm(true)}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700"
-          >
-            + New User
-          </button>
-        )}
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Users</h1>
+          <p className="text-muted-foreground text-sm">Manage team members and access</p>
+        </div>
+        <Button onClick={() => setSheetOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" /> New User
+        </Button>
       </div>
 
-      {showForm && (
-        <form onSubmit={handleCreate} className="rounded-xl border bg-white p-6 shadow-sm space-y-4 max-w-md">
-          <h2 className="font-semibold">New User</h2>
-          {[
-            { key: "username", label: "Username", type: "text" },
-            { key: "displayName", label: "Display Name", type: "text" },
-            { key: "password", label: "Temporary Password", type: "password" },
-          ].map(({ key, label, type }) => (
-            <div key={key}>
-              <label className="block text-sm font-medium mb-1">{label}</label>
-              <input
-                type={type}
-                value={form[key as keyof typeof form] as string}
-                onChange={(e) => setForm((prev) => ({ ...prev, [key]: e.target.value }))}
-                className="w-full rounded-md border px-3 py-2 text-sm"
-                required
-              />
-            </div>
-          ))}
-          <div>
-            <label className="block text-sm font-medium mb-1">Role</label>
-            <select
-              value={form.role}
-              onChange={(e) => setForm((prev) => ({ ...prev, role: e.target.value as "admin" | "staff" }))}
-              className="w-full rounded-md border px-3 py-2 text-sm"
-            >
-              <option value="staff">Staff</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
-          <div className="flex gap-3">
-            <button type="submit" disabled={saving} className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white disabled:opacity-60">
-              {saving ? "Creating…" : "Create User"}
-            </button>
-            <button type="button" onClick={() => setShowForm(false)} className="rounded-md border px-4 py-2 text-sm">
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">All Users</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : (
+            <DataTable columns={columns} data={users} filterPlaceholder="Search users…" />
+          )}
+        </CardContent>
+      </Card>
 
-      {loading ? <p className="text-sm text-gray-500">Loading…</p> : (
-        <DataTable columns={columns} data={users} filterPlaceholder="Search users…" />
-      )}
+      {/* Create user sheet */}
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent className="sm:max-w-md">
+          <SheetHeader>
+            <SheetTitle>New User</SheetTitle>
+            <SheetDescription>Create a new team member account. They must change their password on first login.</SheetDescription>
+          </SheetHeader>
+          <div className="mt-6">
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                <FormField
+                  control={form.control}
+                  name="username"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Username</FormLabel>
+                      <FormControl><Input placeholder="john.doe" className="font-mono" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="displayName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Display Name</FormLabel>
+                      <FormControl><Input placeholder="John Doe" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Temporary Password</FormLabel>
+                      <FormControl><Input type="password" placeholder="Min. 10 characters" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="role"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Role</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
+                        <SelectContent>
+                          <SelectItem value="staff">Staff</SelectItem>
+                          <SelectItem value="admin">Admin</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <div className="flex gap-3 pt-2">
+                  <Button type="submit" disabled={saving} className="flex-1">
+                    {saving ? "Creating…" : "Create User"}
+                  </Button>
+                  <Button type="button" variant="outline" onClick={() => setSheetOpen(false)}>Cancel</Button>
+                </div>
+              </form>
+            </Form>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Reset password dialog */}
+      <Dialog open={resetDialog.open} onOpenChange={(open) => setResetDialog({ id: "", username: "", open })}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Reset Password</DialogTitle>
+            <DialogDescription>
+              Set a new temporary password for <strong>{resetDialog.username}</strong>. They will be required to change it on next login.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            type="password"
+            placeholder="New password (min. 10 chars)"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetDialog({ id: "", username: "", open: false })}>Cancel</Button>
+            <Button onClick={handleReset} disabled={resetting}>
+              {resetting ? "Resetting…" : "Reset Password"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -2,6 +2,11 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/context/auth";
 import { Toaster } from "sonner";
+import { Geist } from "next/font/google";
+import { cn } from "@/lib/utils";
+import { TooltipProvider } from "@/components/ui/tooltip";
+
+const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
   title: "Finance Yanti",
@@ -10,11 +15,13 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="id">
+    <html lang="id" className={cn("font-sans", geist.variable)}>
       <body className="min-h-screen bg-background font-sans antialiased">
         <AuthProvider>
-          {children}
-          <Toaster richColors position="top-right" />
+          <TooltipProvider>
+            {children}
+            <Toaster richColors position="top-right" />
+          </TooltipProvider>
         </AuthProvider>
       </body>
     </html>

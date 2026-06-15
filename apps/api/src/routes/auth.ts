@@ -18,6 +18,7 @@ const COOKIE_OPTS = {
   secure: true,
   sameSite: "Lax" as const,
   path: "/",
+  domain: ".christianviali0.workers.dev", // shared across api + web subdomains
   maxAge: 60 * 60 * 24 * 7, // 7 days
 };
 
@@ -43,7 +44,7 @@ authRouter.post("/login", zValidator("json", loginSchema), async (c) => {
   const csrfToken = await generateCsrfToken(token, c.env.CSRF_SECRET);
 
   setCookie(c, "session", token, COOKIE_OPTS);
-  setCookie(c, "csrf_token", csrfToken, { ...COOKIE_OPTS, httpOnly: false }); // readable by JS for header injection
+  setCookie(c, "csrf_token", csrfToken, { ...COOKIE_OPTS, httpOnly: false });
 
   return c.json({
     data: {
@@ -52,6 +53,7 @@ authRouter.post("/login", zValidator("json", loginSchema), async (c) => {
       displayName: user.displayName,
       role: user.role,
       mustChangePassword: user.mustChangePassword,
+      csrfToken, // included in body so web app can cache it without reading cookie
     },
   });
 });
@@ -64,9 +66,13 @@ authRouter.post("/logout", async (c) => {
 });
 
 // GET /auth/me
-authRouter.get("/me", authMiddleware, (c) => {
+authRouter.get("/me", authMiddleware, async (c) => {
   const user = c.get("user");
-  return c.json({ data: user });
+  const sessionToken = getCookie(c, "session") ?? "";
+  const csrfToken = sessionToken
+    ? await generateCsrfToken(sessionToken, c.env.CSRF_SECRET)
+    : "";
+  return c.json({ data: { ...user, csrfToken } });
 });
 
 // POST /auth/change-password
@@ -101,5 +107,5 @@ authRouter.post("/change-password", authMiddleware, zValidator("json", changePas
   setCookie(c, "session", token, COOKIE_OPTS);
   setCookie(c, "csrf_token", csrfToken, { ...COOKIE_OPTS, httpOnly: false });
 
-  return c.json({ data: { ok: true } });
+  return c.json({ data: { ok: true, csrfToken } });
 });

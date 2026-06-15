@@ -9,6 +9,6 @@
     "binding": "ASSETS"
   },
   "vars": {
-    "NEXT_PUBLIC_API_URL": "http://localhost:8787"
+    "NEXT_PUBLIC_API_URL": "https://financing-app-api.christianviali0.workers.dev"
   }
 }

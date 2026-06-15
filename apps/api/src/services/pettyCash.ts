@@ -6,38 +6,35 @@ export type MutationDirection = "in" | "out";
 
 type MutationRow = typeof pettyCashMutations.$inferInsert;
 
-interface CreateMutationOpts {
-  db: DrizzleD1Database;
-  projectId: string;
-  spendingId: string | null;
-  direction: MutationDirection;
-  amountIdr: number;
-  note?: string;
-  createdBy: string;
-}
-
 /**
- * Returns the current petty cash balance for a project by reading the latest
- * mutation row ordered by (created_at, id).  Returns 0 if no mutations exist.
+ * Returns the current GLOBAL petty cash balance by reading `balance_after_idr`
+ * from the most recent mutation row (ordered by created_at, id).
+ *
+ * Every insert writes `balance_after_idr` using the pre-insert global balance,
+ * so the latest row's value IS the current balance — O(1) instead of O(n) SUM.
+ * Returns 0 if no mutations exist yet.
  */
-export async function getProjectBalance(db: DrizzleD1Database, projectId: string): Promise<number> {
+export async function getGlobalBalance(db: DrizzleD1Database): Promise<number> {
   const rows = await db
     .select({ balanceAfterIdr: pettyCashMutations.balanceAfterIdr })
     .from(pettyCashMutations)
-    .where(eq(pettyCashMutations.projectId, projectId))
     .orderBy(pettyCashMutations.createdAt, pettyCashMutations.id)
     .all();
   return rows.length > 0 ? rows[rows.length - 1]!.balanceAfterIdr : 0;
 }
 
 /**
- * Creates a single petty cash mutation row.  The caller is responsible for
- * wrapping in a db.batch() alongside any related spending insert/update so
- * both succeed or fail atomically.
- *
- * Note: this function computes balance_after_idr synchronously from the
- * current balance provided by the caller to avoid a second DB round-trip
- * inside a batch.
+ * @deprecated Use getGlobalBalance — petty cash is now a shared pool.
+ * Kept for backward compatibility; returns the global balance, ignoring projectId.
+ */
+export async function getProjectBalance(db: DrizzleD1Database, _projectId: string): Promise<number> {
+  return getGlobalBalance(db);
+}
+
+/**
+ * Builds a single petty cash mutation row.
+ * `projectId` is kept for attribution (showing which project used petty cash)
+ * but does NOT scope the balance — all mutations share one global pool.
  */
 export function buildMutationRow(
   projectId: string,
@@ -64,9 +61,9 @@ export function buildMutationRow(
 }
 
 /**
- * Validates and computes petty cash effect of a new spending.
- * Returns the mutation rows to insert (may be empty for external with no cut).
- * Throws if balance is insufficient for project_petty_cash.
+ * Validates and computes petty cash effect of a new spending against the
+ * GLOBAL balance. Returns mutation rows to insert (may be empty).
+ * Throws 422 if global balance is insufficient for project_petty_cash.
  */
 export async function computeSpendingMutations(
   db: DrizzleD1Database,
@@ -80,41 +77,32 @@ export async function computeSpendingMutations(
   },
 ): Promise<MutationRow[]> {
   const { projectId, spendingId, paymentSource, amountIdr, pettyCashCutIdr, createdBy } = opts;
-  const balance = await getProjectBalance(db, projectId);
+  const balance = await getGlobalBalance(db);
   const mutations: MutationRow[] = [];
 
   if (paymentSource === "project_petty_cash") {
     if (balance < amountIdr) {
       throw Object.assign(
-        new Error(`Insufficient petty cash balance. Available: ${balance} IDR, required: ${amountIdr} IDR`),
+        new Error(
+          `Insufficient shared petty cash balance. Available: ${balance.toLocaleString("id-ID")} IDR, required: ${amountIdr.toLocaleString("id-ID")} IDR`,
+        ),
         { status: 422 },
       );
     }
     mutations.push(
-      buildMutationRow(projectId, spendingId, "out", amountIdr, balance, "Project petty cash spending", createdBy),
+      buildMutationRow(projectId, spendingId, "out", amountIdr, balance, "Petty cash spending", createdBy),
     );
   } else if (paymentSource === "external" && pettyCashCutIdr > 0) {
-    // External spending with petty cash reimbursement (incoming mutation)
-    const newBalance = balance + pettyCashCutIdr;
-    mutations.push({
-      id: crypto.randomUUID(),
-      projectId,
-      spendingId,
-      direction: "in",
-      amountIdr: pettyCashCutIdr,
-      balanceAfterIdr: newBalance,
-      note: "Petty cash reimbursement for external spending",
-      createdBy,
-      createdAt: new Date().toISOString(),
-    });
+    mutations.push(
+      buildMutationRow(projectId, spendingId, "in", pettyCashCutIdr, balance, "Petty cash reimbursement for external spending", createdBy),
+    );
   }
 
   return mutations;
 }
 
 /**
- * Creates reversal mutations when a spending is voided or its petty cash
- * impact changes.  Returns the new mutation rows to insert.
+ * Creates reversal mutations against the GLOBAL balance.
  */
 export async function buildReversalMutations(
   db: DrizzleD1Database,
@@ -128,7 +116,7 @@ export async function buildReversalMutations(
   },
 ): Promise<MutationRow[]> {
   const { projectId, spendingId, originalDirection, originalAmount, note, createdBy } = opts;
-  const balance = await getProjectBalance(db, projectId);
+  const balance = await getGlobalBalance(db);
   const reversalDirection: MutationDirection = originalDirection === "in" ? "out" : "in";
   const balanceAfterIdr =
     reversalDirection === "in" ? balance + originalAmount : balance - originalAmount;
