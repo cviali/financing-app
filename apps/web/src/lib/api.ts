@@ -1,5 +1,9 @@
-// Direct call to the API Worker — cookies are shared via .christianviali0.workers.dev domain
-const API_BASE = "https://financing-app-api.christianviali0.workers.dev";
+// Same-origin Next.js proxy (see app/api/proxy/[...path]/route.ts) — required so the
+// session cookie lands host-only on whatever origin the browser is actually on
+// (workers.dev prod subdomain, localhost in dev, etc). A direct cross-site fetch to the
+// API would get a cookie scoped to .christianviali0.workers.dev with SameSite=Lax, which
+// browsers never attach to a request from a different site (e.g. localhost).
+const API_BASE = "/api/proxy";
 
 // In-memory CSRF token cache — set from login/me response bodies.
 // Avoids relying on document.cookie cross-origin visibility (workers.dev PSL issue).
@@ -131,7 +135,7 @@ export const api = {
       }>("/receipts/upload-url", { method: "POST", body: JSON.stringify(body) }),
   },
   exports: {
-    spendings: () => `${API_BASE}/exports/spendings`,
+    spendings: () => `${API_BASE}/exports/spendings`, // requires session cookie -> must go via proxy
     projectPettyCash: (id: string) => `${API_BASE}/exports/projects/${id}/petty-cash`,
   },
   pettyCash: {

@@ -3,7 +3,7 @@
  * Usage (local):  node --import=tsx src/seed.ts local
  *         remote: node --import=tsx src/seed.ts remote
  *
- * For CI/CD pair with `wrangler d1 execute finance-yanti-db --file=seed.sql`
+ * For CI/CD pair with `wrangler d1 execute financing-app --file=seed.sql`
  * by first running this to generate the hash and then substituting.
  *
  * This file is intentionally framework-free (pure WebCrypto + D1 REST-like

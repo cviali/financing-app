@@ -19,7 +19,17 @@ app.use("*", errorMiddleware);
 app.use(
   "*",
   cors({
-    origin: (origin, c) => c.env.CORS_ORIGIN || origin,
+    // Reflect the caller's origin when it is allowlisted (credentials require an
+    // exact origin, never "*"). Localhost entries let `wrangler dev --remote`
+    // serve the local web app (next dev) against the remote API.
+    origin: (origin, c) => {
+      const allowed = [
+        c.env.CORS_ORIGIN,
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+      ].filter(Boolean);
+      return origin && allowed.includes(origin) ? origin : c.env.CORS_ORIGIN;
+    },
     allowHeaders: ["Content-Type", "X-CSRF-Token"],
     allowMethods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
     credentials: true,

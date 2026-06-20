@@ -25,9 +25,9 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "generate": "drizzle-kit generate",
-    "migrate:local": "wrangler d1 migrations apply finance-yanti-db --local",
-    "migrate:remote": "wrangler d1 migrations apply finance-yanti-db --remote",
-    "seed:local": "wrangler d1 execute finance-yanti-db --local --command \"SELECT 1\" && node --experimental-vm-modules dist/seed.js local",
+    "migrate:local": "wrangler d1 migrations apply financing-app --local",
+    "migrate:remote": "wrangler d1 migrations apply financing-app --remote",
+    "seed:local": "wrangler d1 execute financing-app --local --command \"SELECT 1\" && node --experimental-vm-modules dist/seed.js local",
     "studio": "drizzle-kit studio"
   },
   "dependencies": {

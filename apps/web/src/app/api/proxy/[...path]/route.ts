@@ -31,13 +31,21 @@ async function handler(
 
   // Build response — forward all headers but strip Domain from Set-Cookie
   // so cookies are set on the web domain (financing-app-web.*) not the api domain
+  const isHttps = req.nextUrl.protocol === "https:";
   const resHeaders = new Headers();
   for (const [key, value] of apiRes.headers.entries()) {
     if (key.toLowerCase() === "set-cookie") {
-      // Strip Domain= attribute so cookie defaults to the proxy's host
+      // Strip Domain= attribute so cookie defaults to the proxy's host. Also strip
+      // Secure when the browser is talking to us over plain HTTP (e.g. `next dev` on
+      // localhost) — browsers silently drop Secure cookies on an insecure connection.
       const cleaned = value
         .split(";")
-        .filter((part) => !part.trim().toLowerCase().startsWith("domain"))
+        .filter((part) => {
+          const trimmed = part.trim().toLowerCase();
+          if (trimmed.startsWith("domain")) return false;
+          if (!isHttps && trimmed === "secure") return false;
+          return true;
+        })
         .join("; ");
       resHeaders.append("set-cookie", cleaned);
     } else {
