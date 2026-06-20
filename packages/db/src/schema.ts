@@ -10,13 +10,23 @@ export const users = sqliteTable(
     username: text("username").notNull().unique(),
     displayName: text("display_name").notNull(),
     passwordHash: text("password_hash").notNull(),
-    role: text("role", { enum: ["admin", "staff"] }).notNull().default("staff"),
-    status: text("status", { enum: ["active", "disabled"] }).notNull().default("active"),
-    mustChangePassword: integer("must_change_password", { mode: "boolean" }).notNull().default(true),
+    role: text("role", { enum: ["admin", "staff"] })
+      .notNull()
+      .default("staff"),
+    status: text("status", { enum: ["active", "disabled"] })
+      .notNull()
+      .default("active"),
+    mustChangePassword: integer("must_change_password", { mode: "boolean" })
+      .notNull()
+      .default(true),
     lastLoginAt: text("last_login_at"),
     createdBy: text("created_by"),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
   },
   (t) => [index("users_username_idx").on(t.username)],
 );
@@ -30,10 +40,18 @@ export const projects = sqliteTable(
     name: text("name").notNull(),
     code: text("code").notNull().unique(),
     description: text("description"),
-    status: text("status", { enum: ["active", "archived"] }).notNull().default("active"),
-    createdBy: text("created_by").notNull().references(() => users.id),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    status: text("status", { enum: ["active", "archived"] })
+      .notNull()
+      .default("active"),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
   },
   (t) => [index("projects_code_idx").on(t.code), index("projects_status_idx").on(t.status)],
 );
@@ -45,10 +63,18 @@ export const categories = sqliteTable(
   {
     id: text("id").primaryKey(),
     name: text("name").notNull().unique(),
-    status: text("status", { enum: ["active", "archived"] }).notNull().default("active"),
-    createdBy: text("created_by").notNull().references(() => users.id),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    status: text("status", { enum: ["active", "archived"] })
+      .notNull()
+      .default("active"),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
   },
   (t) => [index("categories_name_idx").on(t.name)],
 );
@@ -59,23 +85,29 @@ export const spendings = sqliteTable(
   "spendings",
   {
     id: text("id").primaryKey(),
-    projectId: text("project_id").notNull().references(() => projects.id),
-    categoryId: text("category_id").notNull().references(() => categories.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
+    categoryId: text("category_id")
+      .notNull()
+      .references(() => categories.id),
     amountIdr: integer("amount_idr").notNull(),
-    paymentSource: text("payment_source", {
-      enum: ["external", "project_petty_cash"],
-    }).notNull(),
-    pettyCashCutIdr: integer("petty_cash_cut_idr").notNull().default(0),
     description: text("description"),
     spendingDate: text("spending_date").notNull(), // YYYY-MM-DD
     receiptObjectKey: text("receipt_object_key"),
     receiptFileName: text("receipt_file_name"),
     receiptContentType: text("receipt_content_type"),
     receiptSizeBytes: integer("receipt_size_bytes"),
-    createdBy: text("created_by").notNull().references(() => users.id),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id),
     updatedBy: text("updated_by").references(() => users.id),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-    updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
+    updatedAt: text("updated_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
     voidedAt: text("voided_at"),
     voidedBy: text("voided_by").references(() => users.id),
     voidReason: text("void_reason"),
@@ -89,25 +121,31 @@ export const spendings = sqliteTable(
   ],
 );
 
-// ─── Petty Cash Mutations ─────────────────────────────────────────────────────
+// ─── Project Balance Mutations ────────────────────────────────────────────────
 
-export const pettyCashMutations = sqliteTable(
-  "petty_cash_mutations",
+export const projectBalanceMutations = sqliteTable(
+  "project_balance_mutations",
   {
     id: text("id").primaryKey(),
-    projectId: text("project_id").notNull().references(() => projects.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.id),
     spendingId: text("spending_id").references(() => spendings.id),
     direction: text("direction", { enum: ["in", "out"] }).notNull(),
     amountIdr: integer("amount_idr").notNull(),
     balanceAfterIdr: integer("balance_after_idr").notNull(),
     note: text("note"),
-    createdBy: text("created_by").notNull().references(() => users.id),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    createdBy: text("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
   },
   (t) => [
-    index("pcm_project_idx").on(t.projectId),
-    index("pcm_spending_idx").on(t.spendingId),
-    index("pcm_created_at_idx").on(t.createdAt),
+    index("pbm_project_idx").on(t.projectId),
+    index("pbm_spending_idx").on(t.spendingId),
+    index("pbm_created_at_idx").on(t.createdAt),
   ],
 );
 
@@ -117,13 +155,17 @@ export const auditLogs = sqliteTable(
   "audit_logs",
   {
     id: text("id").primaryKey(),
-    actorUserId: text("actor_user_id").notNull().references(() => users.id),
+    actorUserId: text("actor_user_id")
+      .notNull()
+      .references(() => users.id),
     action: text("action").notNull(),
     entityType: text("entity_type").notNull(),
     entityId: text("entity_id").notNull(),
     beforeJson: text("before_json"),
     afterJson: text("after_json"),
-    createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+    createdAt: text("created_at")
+      .notNull()
+      .default(sql`(datetime('now'))`),
   },
   (t) => [
     index("audit_actor_idx").on(t.actorUserId),
@@ -142,7 +184,7 @@ export type Category = typeof categories.$inferSelect;
 export type NewCategory = typeof categories.$inferInsert;
 export type Spending = typeof spendings.$inferSelect;
 export type NewSpending = typeof spendings.$inferInsert;
-export type PettyCashMutation = typeof pettyCashMutations.$inferSelect;
-export type NewPettyCashMutation = typeof pettyCashMutations.$inferInsert;
+export type ProjectBalanceMutation = typeof projectBalanceMutations.$inferSelect;
+export type NewProjectBalanceMutation = typeof projectBalanceMutations.$inferInsert;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type NewAuditLog = typeof auditLogs.$inferInsert;

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { eq, isNull, desc } from "drizzle-orm";
-import { spendings, pettyCashMutations, projects, categories, users } from "@repo/db/schema";
+import { spendings, projectBalanceMutations, projects, categories, users } from "@repo/db/schema";
 import writeXlsx from "write-excel-file/universal";
 import { dbMiddleware, authMiddleware } from "../middleware/auth.js";
 import type { AppContext } from "../types/context.js";
@@ -20,9 +20,7 @@ exportsRouter.get("/spendings", async (c) => {
       projectName: projects.name,
       categoryName: categories.name,
       description: spendings.description,
-      paymentSource: spendings.paymentSource,
       amountIdr: spendings.amountIdr,
-      pettyCashCutIdr: spendings.pettyCashCutIdr,
       createdByUsername: users.username,
       receiptObjectKey: spendings.receiptObjectKey,
       createdAt: spendings.createdAt,
@@ -42,9 +40,7 @@ exportsRouter.get("/spendings", async (c) => {
     { value: "Project Name", fontWeight: "bold" },
     { value: "Category", fontWeight: "bold" },
     { value: "Description", fontWeight: "bold" },
-    { value: "Payment Source", fontWeight: "bold" },
     { value: "Amount IDR", fontWeight: "bold", align: "right" },
-    { value: "Petty Cash Cut IDR", fontWeight: "bold", align: "right" },
     { value: "Created By", fontWeight: "bold" },
     { value: "Receipt Object Key", fontWeight: "bold" },
     { value: "Created At", fontWeight: "bold" },
@@ -57,16 +53,16 @@ exportsRouter.get("/spendings", async (c) => {
     { value: r.projectName ?? "" },
     { value: r.categoryName ?? "" },
     { value: r.description ?? "" },
-    { value: r.paymentSource },
     { value: r.amountIdr, type: Number, align: "right" as const },
-    { value: r.pettyCashCutIdr, type: Number, align: "right" as const },
     { value: r.createdByUsername ?? "" },
     { value: r.receiptObjectKey ?? "" },
     { value: r.createdAt },
     { value: r.updatedAt },
   ]);
 
-  const blob = await writeXlsx([[...header], ...dataRows] as unknown as Parameters<typeof writeXlsx>[0]).toBlob();
+  const blob = await writeXlsx([[...header], ...dataRows] as unknown as Parameters<
+    typeof writeXlsx
+  >[0]).toBlob();
   const arrayBuffer = await blob.arrayBuffer();
 
   return new Response(arrayBuffer, {
@@ -77,25 +73,25 @@ exportsRouter.get("/spendings", async (c) => {
   });
 });
 
-// GET /exports/projects/:id/petty-cash
-exportsRouter.get("/projects/:id/petty-cash", async (c) => {
+// GET /exports/projects/:id/balance-mutations
+exportsRouter.get("/projects/:id/balance-mutations", async (c) => {
   const db = c.get("db");
   const { id } = c.req.param();
 
   const rows = await db
     .select({
-      createdAt: pettyCashMutations.createdAt,
-      direction: pettyCashMutations.direction,
-      amountIdr: pettyCashMutations.amountIdr,
-      balanceAfterIdr: pettyCashMutations.balanceAfterIdr,
-      spendingId: pettyCashMutations.spendingId,
-      note: pettyCashMutations.note,
+      createdAt: projectBalanceMutations.createdAt,
+      direction: projectBalanceMutations.direction,
+      amountIdr: projectBalanceMutations.amountIdr,
+      balanceAfterIdr: projectBalanceMutations.balanceAfterIdr,
+      spendingId: projectBalanceMutations.spendingId,
+      note: projectBalanceMutations.note,
       createdByUsername: users.username,
     })
-    .from(pettyCashMutations)
-    .leftJoin(users, eq(pettyCashMutations.createdBy, users.id))
-    .where(eq(pettyCashMutations.projectId, id))
-    .orderBy(pettyCashMutations.createdAt)
+    .from(projectBalanceMutations)
+    .leftJoin(users, eq(projectBalanceMutations.createdBy, users.id))
+    .where(eq(projectBalanceMutations.projectId, id))
+    .orderBy(projectBalanceMutations.createdAt)
     .all();
 
   const header = [
@@ -118,13 +114,15 @@ exportsRouter.get("/projects/:id/petty-cash", async (c) => {
     { value: r.createdByUsername ?? "" },
   ]);
 
-  const blob = await writeXlsx([[...header], ...dataRows] as unknown as Parameters<typeof writeXlsx>[0]).toBlob();
+  const blob = await writeXlsx([[...header], ...dataRows] as unknown as Parameters<
+    typeof writeXlsx
+  >[0]).toBlob();
   const arrayBuffer = await blob.arrayBuffer();
 
   return new Response(arrayBuffer, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="petty-cash-${id}-${new Date().toISOString().slice(0, 10)}.xlsx"`,
+      "Content-Disposition": `attachment; filename="balance-${id}-${new Date().toISOString().slice(0, 10)}.xlsx"`,
     },
   });
 });

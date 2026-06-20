@@ -1,11 +1,15 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { eq } from "drizzle-orm";
-import { projects, pettyCashMutations } from "@repo/db/schema";
-import { createProjectSchema, updateProjectSchema } from "@repo/shared/schemas/projects";
+import { projects, projectBalanceMutations } from "@repo/db/schema";
+import {
+  createProjectSchema,
+  updateProjectSchema,
+  topupProjectSchema,
+} from "@repo/shared/schemas/projects";
 import { writeAuditLog } from "../lib/audit.js";
 import { dbMiddleware, authMiddleware, adminMiddleware } from "../middleware/auth.js";
-import { getGlobalBalance } from "../services/pettyCash.js";
+import { getProjectBalance, buildTopupMutation } from "../services/projectBalance.js";
 import type { AppContext } from "../types/context.js";
 
 export const projectsRouter = new Hono<AppContext>();
@@ -25,7 +29,11 @@ projectsRouter.post("/", adminMiddleware, zValidator("json", createProjectSchema
   const db = c.get("db");
   const actor = c.get("user");
 
-  const existing = await db.select({ id: projects.id }).from(projects).where(eq(projects.code, body.code)).get();
+  const existing = await db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(eq(projects.code, body.code))
+    .get();
   if (existing) return c.json({ error: "Project code already exists" }, 409);
 
   const now = new Date().toISOString();
@@ -49,7 +57,12 @@ projectsRouter.post("/", adminMiddleware, zValidator("json", createProjectSchema
     after: body,
   });
 
-  return c.json({ data: { id, ...body, status: "active", createdBy: actor.id, createdAt: now, updatedAt: now } }, 201);
+  return c.json(
+    {
+      data: { id, ...body, status: "active", createdBy: actor.id, createdAt: now, updatedAt: now },
+    },
+    201,
+  );
 });
 
 // GET /projects/:id
@@ -59,37 +72,41 @@ projectsRouter.get("/:id", async (c) => {
   const project = await db.select().from(projects).where(eq(projects.id, id)).get();
   if (!project) return c.json({ error: "Project not found" }, 404);
 
-  // Global shared petty cash balance
-  const pettyCashBalance = await getGlobalBalance(db);
+  const balanceIdr = await getProjectBalance(db, id);
 
-  return c.json({ data: { ...project, pettyCashBalance } });
+  return c.json({ data: { ...project, balanceIdr } });
 });
 
 // PATCH /projects/:id — admin only
-projectsRouter.patch("/:id", adminMiddleware, zValidator("json", updateProjectSchema), async (c) => {
-  const db = c.get("db");
-  const actor = c.get("user");
-  const { id } = c.req.param();
-  const body = c.req.valid("json");
+projectsRouter.patch(
+  "/:id",
+  adminMiddleware,
+  zValidator("json", updateProjectSchema),
+  async (c) => {
+    const db = c.get("db");
+    const actor = c.get("user");
+    const { id } = c.req.param();
+    const body = c.req.valid("json");
 
-  const project = await db.select().from(projects).where(eq(projects.id, id)).get();
-  if (!project) return c.json({ error: "Project not found" }, 404);
+    const project = await db.select().from(projects).where(eq(projects.id, id)).get();
+    if (!project) return c.json({ error: "Project not found" }, 404);
 
-  const now = new Date().toISOString();
-  const updates = { ...body, updatedAt: now };
-  await db.update(projects).set(updates).where(eq(projects.id, id));
+    const now = new Date().toISOString();
+    const updates = { ...body, updatedAt: now };
+    await db.update(projects).set(updates).where(eq(projects.id, id));
 
-  await writeAuditLog(db, {
-    actorUserId: actor.id,
-    action: "project.update",
-    entityType: "project",
-    entityId: id,
-    before: { name: project.name, description: project.description },
-    after: updates,
-  });
+    await writeAuditLog(db, {
+      actorUserId: actor.id,
+      action: "project.update",
+      entityType: "project",
+      entityId: id,
+      before: { name: project.name, description: project.description },
+      after: updates,
+    });
 
-  return c.json({ data: { ok: true } });
-});
+    return c.json({ data: { ok: true } });
+  },
+);
 
 // POST /projects/:id/archive — admin only
 projectsRouter.post("/:id/archive", adminMiddleware, async (c) => {
@@ -116,8 +133,8 @@ projectsRouter.post("/:id/archive", adminMiddleware, async (c) => {
   return c.json({ data: { ok: true } });
 });
 
-// GET /projects/:id/petty-cash — project-scoped mutations + global balance
-projectsRouter.get("/:id/petty-cash", async (c) => {
+// GET /projects/:id/balance — project balance + its mutations
+projectsRouter.get("/:id/balance", async (c) => {
   const db = c.get("db");
   const { id } = c.req.param();
 
@@ -125,29 +142,65 @@ projectsRouter.get("/:id/petty-cash", async (c) => {
   if (!project) return c.json({ error: "Project not found" }, 404);
 
   const [balance, mutations] = await Promise.all([
-    getGlobalBalance(db),
+    getProjectBalance(db, id),
     db
       .select()
-      .from(pettyCashMutations)
-      .where(eq(pettyCashMutations.projectId, id))
-      .orderBy(pettyCashMutations.createdAt)
+      .from(projectBalanceMutations)
+      .where(eq(projectBalanceMutations.projectId, id))
+      .orderBy(projectBalanceMutations.createdAt)
       .all(),
   ]);
 
   return c.json({ data: { balance, mutations } });
 });
 
-// GET /projects/:id/petty-cash/mutations
-projectsRouter.get("/:id/petty-cash/mutations", async (c) => {
+// GET /projects/:id/balance/mutations
+projectsRouter.get("/:id/balance/mutations", async (c) => {
   const db = c.get("db");
   const { id } = c.req.param();
 
   const mutations = await db
     .select()
-    .from(pettyCashMutations)
-    .where(eq(pettyCashMutations.projectId, id))
-    .orderBy(pettyCashMutations.createdAt)
+    .from(projectBalanceMutations)
+    .where(eq(projectBalanceMutations.projectId, id))
+    .orderBy(projectBalanceMutations.createdAt)
     .all();
 
   return c.json({ data: mutations });
 });
+
+// POST /projects/:id/topup — admin only
+projectsRouter.post(
+  "/:id/topup",
+  adminMiddleware,
+  zValidator("json", topupProjectSchema),
+  async (c) => {
+    const db = c.get("db");
+    const actor = c.get("user");
+    const { id } = c.req.param();
+    const body = c.req.valid("json");
+
+    const project = await db.select().from(projects).where(eq(projects.id, id)).get();
+    if (!project) return c.json({ error: "Project not found" }, 404);
+    if (project.status === "archived") return c.json({ error: "Project is archived" }, 422);
+
+    const mutation = await buildTopupMutation(db, {
+      projectId: id,
+      amountIdr: body.amountIdr,
+      note: body.note,
+      createdBy: actor.id,
+    });
+
+    await db.insert(projectBalanceMutations).values(mutation);
+
+    await writeAuditLog(db, {
+      actorUserId: actor.id,
+      action: "project.topup",
+      entityType: "project",
+      entityId: id,
+      after: { amountIdr: body.amountIdr, note: body.note },
+    });
+
+    return c.json({ data: { ok: true, balance: mutation.balanceAfterIdr } });
+  },
+);

@@ -6,24 +6,45 @@ import { api } from "@/lib/api";
 import { formatIDR, formatDate } from "@/lib/format";
 import { useAuth } from "@/context/auth";
 import { DataTable } from "@/components/ui/data-table";
-import { paymentSourceBadge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle,
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
 } from "@/components/ui/sheet";
 import {
-  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  Form, FormControl, FormField, FormItem, FormLabel, FormMessage,
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
 } from "@/components/ui/form";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -48,8 +69,14 @@ function parseIDRInput(formatted: string): number {
 }
 
 // ── Receipt upload helper ──────────────────────────────────────────────────────
-async function uploadReceipt(file: File, projectId: string): Promise<{
-  receiptObjectKey: string; receiptFileName: string; receiptContentType: string; receiptSizeBytes: number;
+async function uploadReceipt(
+  file: File,
+  projectId: string,
+): Promise<{
+  receiptObjectKey: string;
+  receiptFileName: string;
+  receiptContentType: string;
+  receiptSizeBytes: number;
 } | null> {
   try {
     const { data } = await api.receipts.getUploadUrl({
@@ -75,11 +102,6 @@ async function uploadReceipt(file: File, projectId: string): Promise<{
   }
 }
 
-const PAYMENT_SOURCE_LABELS: Record<string, string> = {
-  external: "External",
-  project_petty_cash: "Project Petty Cash",
-};
-
 export default function SpendingsPage() {
   const { user } = useAuth();
   const [spendings, setSpendings] = useState<Spending[]>([]);
@@ -89,31 +111,37 @@ export default function SpendingsPage() {
   const [sheetMode, setSheetMode] = useState<"create" | "edit" | null>(null);
   const [editingSpending, setEditingSpending] = useState<Spending | null>(null);
   const [saving, setSaving] = useState(false);
-  const [voidDialog, setVoidDialog] = useState<{ id: string; open: boolean }>({ id: "", open: false });
+  const [voidDialog, setVoidDialog] = useState<{ id: string; open: boolean }>({
+    id: "",
+    open: false,
+  });
   const [voidReason, setVoidReason] = useState("");
   const [voiding, setVoiding] = useState(false);
   // Receipt state — file is uploaded to R2 immediately on pick; metadata is sent on submit
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptMeta, setReceiptMeta] = useState<{
-    receiptObjectKey: string; receiptFileName: string; receiptContentType: string; receiptSizeBytes: number;
+    receiptObjectKey: string;
+    receiptFileName: string;
+    receiptContentType: string;
+    receiptSizeBytes: number;
   } | null>(null);
   const [uploadingReceipt, setUploadingReceipt] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // IDR display state
   const [amountDisplay, setAmountDisplay] = useState("");
-  const [cutDisplay, setCutDisplay] = useState("");
 
   const form = useForm<SpendingFormInput>({
     resolver: zodResolver(createSpendingSchema),
-    defaultValues: { paymentSource: "external", pettyCashCutIdr: 0 },
+    defaultValues: {},
   });
-  const paymentSource = form.watch("paymentSource");
   const selectedProjectId = form.watch("projectId");
 
   async function load() {
     try {
       const [s, p, c] = await Promise.all([
-        api.spendings.list(), api.projects.list(), api.categories.list(),
+        api.spendings.list(),
+        api.projects.list(),
+        api.categories.list(),
       ]);
       setSpendings(s.data);
       setProjects(p.data.filter((x) => x.status === "active"));
@@ -123,13 +151,14 @@ export default function SpendingsPage() {
     }
   }
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    void load();
+  }, []);
 
   function openCreate() {
     setEditingSpending(null);
-    form.reset({ paymentSource: "external", pettyCashCutIdr: 0 });
+    form.reset({});
     setAmountDisplay("");
-    setCutDisplay("");
     setReceiptFile(null);
     setReceiptMeta(null);
     setSheetMode("create");
@@ -141,13 +170,10 @@ export default function SpendingsPage() {
       projectId: s.projectId,
       categoryId: s.categoryId,
       amountIdr: s.amountIdr,
-      paymentSource: s.paymentSource,
-      pettyCashCutIdr: s.pettyCashCutIdr,
       description: s.description ?? "",
       spendingDate: s.spendingDate,
     });
     setAmountDisplay(s.amountIdr ? Number(s.amountIdr).toLocaleString("id-ID") : "");
-    setCutDisplay(s.pettyCashCutIdr ? Number(s.pettyCashCutIdr).toLocaleString("id-ID") : "");
     setReceiptFile(null);
     setReceiptMeta(null);
     setSheetMode("edit");
@@ -175,7 +201,10 @@ export default function SpendingsPage() {
   }
 
   async function handleVoid() {
-    if (!voidReason.trim()) { toast.error("Void reason is required"); return; }
+    if (!voidReason.trim()) {
+      toast.error("Void reason is required");
+      return;
+    }
     setVoiding(true);
     try {
       await api.spendings.void(voidDialog.id, voidReason);
@@ -192,48 +221,65 @@ export default function SpendingsPage() {
 
   const columns: ColumnDef<Spending>[] = [
     {
-      accessorKey: "spendingDate", header: "Date",
-      cell: (i) => <span className="text-muted-foreground text-xs">{formatDate(i.getValue<string>())}</span>,
+      accessorKey: "spendingDate",
+      header: "Date",
+      cell: (i) => (
+        <span className="text-muted-foreground text-xs">{formatDate(i.getValue<string>())}</span>
+      ),
     },
     {
-      accessorKey: "projectId", header: "Project",
+      accessorKey: "projectId",
+      header: "Project",
       cell: ({ row }) => {
         const p = projects.find((x) => x.id === row.original.projectId);
-        return p ? <span className="font-medium text-sm">{p.name}</span> : <span className="text-muted-foreground text-xs">{row.original.projectId}</span>;
+        return p ? (
+          <span className="font-medium text-sm">{p.name}</span>
+        ) : (
+          <span className="text-muted-foreground text-xs">{row.original.projectId}</span>
+        );
       },
     },
     {
-      accessorKey: "categoryId", header: "Category",
+      accessorKey: "categoryId",
+      header: "Category",
       cell: ({ row }) => {
         const c = categories.find((x) => x.id === row.original.categoryId);
         return <span className="text-sm">{c?.name ?? row.original.categoryId}</span>;
       },
     },
     {
-      accessorKey: "description", header: "Description",
-      cell: (i) => <span className="text-muted-foreground text-sm">{i.getValue<string | null>() ?? "—"}</span>,
-    },
-    { accessorKey: "paymentSource", header: "Source", cell: (i) => paymentSourceBadge(i.getValue<string>()) },
-    {
-      accessorKey: "amountIdr", header: "Amount",
-      cell: (i) => <span className="tabular-nums font-semibold text-right block">{formatIDR(i.getValue<number>())}</span>,
+      accessorKey: "description",
+      header: "Description",
+      cell: (i) => (
+        <span className="text-muted-foreground text-sm">{i.getValue<string | null>() ?? "—"}</span>
+      ),
     },
     {
-      id: "actions", header: "",
+      accessorKey: "amountIdr",
+      header: "Amount",
+      cell: (i) => (
+        <span className="tabular-nums font-semibold text-right block">
+          {formatIDR(i.getValue<number>())}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      header: "",
       cell: ({ row }) => {
         const s = row.original;
         if (s.voidedAt) return <span className="text-xs text-muted-foreground italic">Voided</span>;
         const canEdit = user?.role === "admin" || user?.id === s.createdBy;
         return (
           <DropdownMenu>
-            <DropdownMenuTrigger render={<Button variant="ghost" size="icon" className="h-8 w-8" />}>
+            <DropdownMenuTrigger
+              render={<Button variant="ghost" size="icon" className="h-8 w-8" />}
+            >
               <MoreHorizontal className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {canEdit && (
-                <DropdownMenuItem onClick={() => openEdit(s)}>
-                  Edit Spending
-                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => openEdit(s)}>Edit Spending</DropdownMenuItem>
               )}
               {user?.role === "admin" && (
                 <>
@@ -264,7 +310,11 @@ export default function SpendingsPage() {
           <p className="text-muted-foreground text-sm">All recorded spending transactions</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" render={<a href={api.exports.spendings()} download />}>
+          <Button
+            variant="outline"
+            size="sm"
+            render={<a href={api.exports.spendings()} download />}
+          >
             <Download className="mr-2 h-3.5 w-3.5" /> Export
           </Button>
           <Button onClick={openCreate}>
@@ -278,7 +328,9 @@ export default function SpendingsPage() {
           <CardTitle className="text-base">All Spendings</CardTitle>
         </CardHeader>
         <CardContent>
-          {loading ? <p className="text-sm text-muted-foreground">Loading…</p> : (
+          {loading ? (
+            <p className="text-sm text-muted-foreground">Loading…</p>
+          ) : (
             <DataTable columns={columns} data={spendings} filterPlaceholder="Search spendings…" />
           )}
         </CardContent>
@@ -290,14 +342,15 @@ export default function SpendingsPage() {
           <SheetHeader className="px-6 py-5 border-b">
             <SheetTitle>{isEditing ? "Edit Spending" : "New Spending"}</SheetTitle>
             <SheetDescription>
-              {isEditing ? "Update the details of this spending." : "Record a new spending transaction."}
+              {isEditing
+                ? "Update the details of this spending."
+                : "Record a new spending transaction."}
             </SheetDescription>
           </SheetHeader>
 
           <div className="flex-1 overflow-y-auto px-6 py-5">
             <Form {...form}>
               <form id="spending-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
-
                 {/* Project */}
                 <FormField
                   control={form.control}
@@ -309,7 +362,9 @@ export default function SpendingsPage() {
                         <FormControl>
                           <SelectTrigger className="w-full">
                             <SelectValue placeholder="Select a project…">
-                              {field.value ? projects.find((p) => p.id === field.value)?.name ?? field.value : undefined}
+                              {field.value
+                                ? (projects.find((p) => p.id === field.value)?.name ?? field.value)
+                                : undefined}
                             </SelectValue>
                           </SelectTrigger>
                         </FormControl>
@@ -317,7 +372,9 @@ export default function SpendingsPage() {
                           {projects.map((p) => (
                             <SelectItem key={p.id} value={p.id}>
                               <span>{p.name}</span>
-                              <span className="ml-1.5 text-xs text-muted-foreground font-mono">({p.code})</span>
+                              <span className="ml-1.5 text-xs text-muted-foreground font-mono">
+                                ({p.code})
+                              </span>
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -338,39 +395,19 @@ export default function SpendingsPage() {
                         <FormControl>
                           <SelectTrigger className="w-full">
                             <SelectValue placeholder="Select a category…">
-                              {field.value ? categories.find((c) => c.id === field.value)?.name ?? field.value : undefined}
+                              {field.value
+                                ? (categories.find((c) => c.id === field.value)?.name ??
+                                  field.value)
+                                : undefined}
                             </SelectValue>
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
                           {categories.map((c) => (
-                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                            <SelectItem key={c.id} value={c.id}>
+                              {c.name}
+                            </SelectItem>
                           ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {/* Payment Source */}
-                <FormField
-                  control={form.control}
-                  name="paymentSource"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Payment Source</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value ?? "external"}>
-                        <FormControl>
-                          <SelectTrigger className="w-full">
-                            <SelectValue>
-                              {PAYMENT_SOURCE_LABELS[field.value ?? "external"]}
-                            </SelectValue>
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="external">External</SelectItem>
-                          <SelectItem value="project_petty_cash">Project Petty Cash</SelectItem>
                         </SelectContent>
                       </Select>
                       <FormMessage />
@@ -387,7 +424,9 @@ export default function SpendingsPage() {
                       <FormLabel>Amount (IDR)</FormLabel>
                       <FormControl>
                         <div className="relative">
-                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground select-none">Rp</span>
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground select-none">
+                            Rp
+                          </span>
                           <Input
                             inputMode="numeric"
                             placeholder="0"
@@ -407,40 +446,6 @@ export default function SpendingsPage() {
                   )}
                 />
 
-                {/* Petty Cash Cut — only for external */}
-                {paymentSource === "external" && (
-                  <FormField
-                    control={form.control}
-                    name="pettyCashCutIdr"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>
-                          Petty Cash Cut (IDR)
-                          <span className="ml-1 text-xs text-muted-foreground font-normal">optional</span>
-                        </FormLabel>
-                        <FormControl>
-                          <div className="relative">
-                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-muted-foreground select-none">Rp</span>
-                            <Input
-                              inputMode="numeric"
-                              placeholder="0"
-                              className="pl-8"
-                              value={cutDisplay}
-                              onChange={(e) => {
-                                const fmt = formatIDRInput(e.target.value);
-                                setCutDisplay(fmt);
-                                field.onChange(parseIDRInput(fmt));
-                              }}
-                              onBlur={field.onBlur}
-                            />
-                          </div>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                )}
-
                 {/* Date */}
                 <FormField
                   control={form.control}
@@ -449,7 +454,12 @@ export default function SpendingsPage() {
                     <FormItem>
                       <FormLabel>Date</FormLabel>
                       <FormControl>
-                        <Input type="date" className="w-full" {...field} value={field.value ?? ""} />
+                        <Input
+                          type="date"
+                          className="w-full"
+                          {...field}
+                          value={field.value ?? ""}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -464,7 +474,9 @@ export default function SpendingsPage() {
                     <FormItem>
                       <FormLabel>
                         Description
-                        <span className="ml-1 text-xs text-muted-foreground font-normal">optional</span>
+                        <span className="ml-1 text-xs text-muted-foreground font-normal">
+                          optional
+                        </span>
                       </FormLabel>
                       <FormControl>
                         <Textarea
@@ -484,7 +496,9 @@ export default function SpendingsPage() {
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium leading-none">
                     Receipt / Invoice
-                    <span className="ml-1 text-xs text-muted-foreground font-normal">optional · JPG, PNG, WebP · max 5 MB</span>
+                    <span className="ml-1 text-xs text-muted-foreground font-normal">
+                      optional · JPG, PNG, WebP · max 5 MB
+                    </span>
                   </label>
                   <input
                     ref={fileInputRef}
@@ -520,16 +534,32 @@ export default function SpendingsPage() {
                     }}
                   />
                   {receiptFile ? (
-                    <div className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${
-                      uploadingReceipt ? "bg-amber-50 border-amber-200" : receiptMeta ? "bg-emerald-50 border-emerald-200" : "bg-muted/50"
-                    }`}>
-                      <Paperclip className={`h-4 w-4 shrink-0 ${
-                        uploadingReceipt ? "text-amber-500 animate-pulse" : receiptMeta ? "text-emerald-600" : "text-muted-foreground"
-                      }`} />
+                    <div
+                      className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${
+                        uploadingReceipt
+                          ? "bg-amber-50 border-amber-200"
+                          : receiptMeta
+                            ? "bg-emerald-50 border-emerald-200"
+                            : "bg-muted/50"
+                      }`}
+                    >
+                      <Paperclip
+                        className={`h-4 w-4 shrink-0 ${
+                          uploadingReceipt
+                            ? "text-amber-500 animate-pulse"
+                            : receiptMeta
+                              ? "text-emerald-600"
+                              : "text-muted-foreground"
+                        }`}
+                      />
                       <span className="text-sm truncate flex-1">
                         {uploadingReceipt ? `Uploading ${receiptFile.name}…` : receiptFile.name}
                       </span>
-                      {receiptMeta && <span className="text-xs text-emerald-600 shrink-0 font-medium">✓ Uploaded</span>}
+                      {receiptMeta && (
+                        <span className="text-xs text-emerald-600 shrink-0 font-medium">
+                          ✓ Uploaded
+                        </span>
+                      )}
                       {!uploadingReceipt && (
                         <button
                           type="button"
@@ -558,19 +588,30 @@ export default function SpendingsPage() {
                   )}
                   {editingSpending?.receiptFileName && !receiptFile && (
                     <p className="text-xs text-muted-foreground">
-                      Current: <span className="font-medium">{editingSpending.receiptFileName}</span>
+                      Current:{" "}
+                      <span className="font-medium">{editingSpending.receiptFileName}</span>
                     </p>
                   )}
                 </div>
-
               </form>
             </Form>
           </div>
 
           {/* Footer buttons */}
           <div className="border-t px-6 py-4 flex gap-3">
-            <Button type="submit" form="spending-form" disabled={saving || uploadingReceipt} className="flex-1">
-              {saving ? "Saving…" : uploadingReceipt ? "Uploading receipt…" : isEditing ? "Update Spending" : "Create Spending"}
+            <Button
+              type="submit"
+              form="spending-form"
+              disabled={saving || uploadingReceipt}
+              className="flex-1"
+            >
+              {saving
+                ? "Saving…"
+                : uploadingReceipt
+                  ? "Uploading receipt…"
+                  : isEditing
+                    ? "Update Spending"
+                    : "Create Spending"}
             </Button>
             <Button type="button" variant="outline" onClick={() => setSheetMode(null)}>
               Cancel
@@ -585,7 +626,8 @@ export default function SpendingsPage() {
           <DialogHeader>
             <DialogTitle>Void this spending?</DialogTitle>
             <DialogDescription>
-              This action cannot be undone. If this spending affected petty cash, a reversal entry will be created automatically.
+              This action cannot be undone. A reversal entry will be created on the project's
+              balance automatically.
             </DialogDescription>
           </DialogHeader>
           <Textarea
@@ -595,7 +637,9 @@ export default function SpendingsPage() {
             rows={3}
           />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setVoidDialog({ id: "", open: false })}>Cancel</Button>
+            <Button variant="outline" onClick={() => setVoidDialog({ id: "", open: false })}>
+              Cancel
+            </Button>
             <Button variant="destructive" onClick={handleVoid} disabled={voiding}>
               {voiding ? "Voiding…" : "Yes, void it"}
             </Button>

@@ -37,8 +37,6 @@ export interface Spending {
   projectId: string;
   categoryId: string;
   amountIdr: number;
-  paymentSource: "external" | "project_petty_cash";
-  pettyCashCutIdr: number;
   description: string | null;
   spendingDate: string;
   receiptObjectKey: string | null;
@@ -54,7 +52,7 @@ export interface Spending {
   voidReason: string | null;
 }
 
-export interface PettyCashMutation {
+export interface ProjectBalanceMutation {
   id: string;
   projectId: string;
   spendingId: string | null;

@@ -1,12 +1,16 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { eq, and, isNull, desc } from "drizzle-orm";
-import { spendings, pettyCashMutations, projects, categories } from "@repo/db/schema";
-import { createSpendingSchema, updateSpendingSchema, voidSpendingSchema } from "@repo/shared/schemas/spendings";
+import { spendings, projectBalanceMutations, projects, categories } from "@repo/db/schema";
+import {
+  createSpendingSchema,
+  updateSpendingSchema,
+  voidSpendingSchema,
+} from "@repo/shared/schemas/spendings";
 import { canEditSpending, canVoidSpending } from "@repo/shared";
 import { writeAuditLog } from "../lib/audit.js";
 import { dbMiddleware, authMiddleware, adminMiddleware } from "../middleware/auth.js";
-import { computeSpendingMutations, buildReversalMutations, getProjectBalance } from "../services/pettyCash.js";
+import { computeSpendingMutation, buildReversalMutation } from "../services/projectBalance.js";
 import type { AppContext } from "../types/context.js";
 
 export const spendingsRouter = new Hono<AppContext>();
@@ -37,7 +41,11 @@ spendingsRouter.post("/", zValidator("json", createSpendingSchema), async (c) =>
   if (!project) return c.json({ error: "Project not found" }, 404);
   if (project.status === "archived") return c.json({ error: "Project is archived" }, 422);
 
-  const category = await db.select().from(categories).where(eq(categories.id, body.categoryId)).get();
+  const category = await db
+    .select()
+    .from(categories)
+    .where(eq(categories.id, body.categoryId))
+    .get();
   if (!category) return c.json({ error: "Category not found" }, 404);
   if (category.status === "archived") return c.json({ error: "Category is archived" }, 422);
 
@@ -49,8 +57,6 @@ spendingsRouter.post("/", zValidator("json", createSpendingSchema), async (c) =>
     projectId: body.projectId,
     categoryId: body.categoryId,
     amountIdr: body.amountIdr,
-    paymentSource: body.paymentSource,
-    pettyCashCutIdr: body.pettyCashCutIdr ?? 0,
     description: body.description ?? null,
     spendingDate: body.spendingDate,
     createdBy: actor.id,
@@ -58,21 +64,19 @@ spendingsRouter.post("/", zValidator("json", createSpendingSchema), async (c) =>
     updatedAt: now,
   };
 
-  // Compute petty cash mutations (may throw 422 for insufficient balance)
-  const mutations = await computeSpendingMutations(db, {
+  // Compute the project balance mutation (may throw 422 for insufficient balance)
+  const mutation = await computeSpendingMutation(db, {
     projectId: body.projectId,
     spendingId,
-    paymentSource: body.paymentSource,
     amountIdr: body.amountIdr,
-    pettyCashCutIdr: body.pettyCashCutIdr ?? 0,
     createdBy: actor.id,
   });
 
-  // Atomic batch: spending insert + any petty cash mutations
+  // Atomic batch: spending insert + balance mutation
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await db.batch([
     db.insert(spendings).values(newSpending),
-    ...mutations.map((m) => db.insert(pettyCashMutations).values(m)),
+    db.insert(projectBalanceMutations).values(mutation),
   ] as any);
 
   await writeAuditLog(db, {
@@ -106,73 +110,46 @@ spendingsRouter.patch("/:id", zValidator("json", updateSpendingSchema), async (c
   if (!spending) return c.json({ error: "Spending not found" }, 404);
   if (spending.voidedAt) return c.json({ error: "Cannot edit a voided spending" }, 422);
 
-  if (!canEditSpending({ id: actor.id, role: actor.role, status: actor.status }, spending.createdBy)) {
+  if (
+    !canEditSpending({ id: actor.id, role: actor.role, status: actor.status }, spending.createdBy)
+  ) {
     return c.json({ error: "Forbidden: you can only edit your own spendings" }, 403);
   }
 
   const now = new Date().toISOString();
   const updates = { ...body, updatedBy: actor.id, updatedAt: now };
 
-  // If petty cash impact changed, we need reversals + new mutations
-  const newPaymentSource = body.paymentSource ?? spending.paymentSource;
+  // Balance impact only changes when amount or project changes
   const newAmountIdr = body.amountIdr ?? spending.amountIdr;
-  const newPettyCashCutIdr = body.pettyCashCutIdr ?? spending.pettyCashCutIdr;
   const projectId = body.projectId ?? spending.projectId;
 
-  const oldHasPettyCashImpact =
-    spending.paymentSource === "project_petty_cash" ||
-    (spending.paymentSource === "external" && spending.pettyCashCutIdr > 0);
-  const newHasPettyCashImpact =
-    newPaymentSource === "project_petty_cash" ||
-    (newPaymentSource === "external" && newPettyCashCutIdr > 0);
+  const impactChanged = newAmountIdr !== spending.amountIdr || projectId !== spending.projectId;
 
-  const pettyCashChanged =
-    oldHasPettyCashImpact !== newHasPettyCashImpact ||
-    newAmountIdr !== spending.amountIdr ||
-    newPettyCashCutIdr !== spending.pettyCashCutIdr ||
-    newPaymentSource !== spending.paymentSource ||
-    projectId !== spending.projectId;
+  const mutations: Array<typeof projectBalanceMutations.$inferInsert> = [];
 
-  const reversals: Array<typeof pettyCashMutations.$inferInsert> = [];
-  const newMutations: Array<typeof pettyCashMutations.$inferInsert> = [];
-
-  if (pettyCashChanged && oldHasPettyCashImpact) {
-    // Reverse the original impact
-    const origDirection = spending.paymentSource === "project_petty_cash" ? "out" : "in";
-    const origAmount =
-      spending.paymentSource === "project_petty_cash"
-        ? spending.amountIdr
-        : spending.pettyCashCutIdr;
-
-    const rev = await buildReversalMutations(db, {
+  if (impactChanged) {
+    const reversal = await buildReversalMutation(db, {
       projectId: spending.projectId,
       spendingId: id,
-      originalDirection: origDirection,
-      originalAmount: origAmount,
+      amountIdr: spending.amountIdr,
       note: `Reversal for spending edit (${id})`,
       createdBy: actor.id,
     });
-    reversals.push(...rev);
-  }
+    mutations.push(reversal);
 
-  if (pettyCashChanged && newHasPettyCashImpact) {
-    // Apply new impact (after reversals are "logically applied")
-    const newMuts = await computeSpendingMutations(db, {
+    const newMutation = await computeSpendingMutation(db, {
       projectId,
       spendingId: id,
-      paymentSource: newPaymentSource,
       amountIdr: newAmountIdr,
-      pettyCashCutIdr: newPettyCashCutIdr,
       createdBy: actor.id,
     });
-    newMutations.push(...newMuts);
+    mutations.push(newMutation);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await db.batch([
     db.update(spendings).set(updates).where(eq(spendings.id, id)),
-    ...reversals.map((m) => db.insert(pettyCashMutations).values(m)),
-    ...newMutations.map((m) => db.insert(pettyCashMutations).values(m)),
+    ...mutations.map((m) => db.insert(projectBalanceMutations).values(m)),
   ] as any);
 
   await writeAuditLog(db, {
@@ -188,59 +165,48 @@ spendingsRouter.patch("/:id", zValidator("json", updateSpendingSchema), async (c
 });
 
 // POST /spendings/:id/void — admin only
-spendingsRouter.post("/:id/void", adminMiddleware, zValidator("json", voidSpendingSchema), async (c) => {
-  const db = c.get("db");
-  const actor = c.get("user");
-  const { id } = c.req.param();
-  const { voidReason } = c.req.valid("json");
+spendingsRouter.post(
+  "/:id/void",
+  adminMiddleware,
+  zValidator("json", voidSpendingSchema),
+  async (c) => {
+    const db = c.get("db");
+    const actor = c.get("user");
+    const { id } = c.req.param();
+    const { voidReason } = c.req.valid("json");
 
-  const spending = await db.select().from(spendings).where(eq(spendings.id, id)).get();
-  if (!spending) return c.json({ error: "Spending not found" }, 404);
-  if (spending.voidedAt) return c.json({ error: "Spending already voided" }, 409);
+    const spending = await db.select().from(spendings).where(eq(spendings.id, id)).get();
+    if (!spending) return c.json({ error: "Spending not found" }, 404);
+    if (spending.voidedAt) return c.json({ error: "Spending already voided" }, 409);
 
-  const now = new Date().toISOString();
+    const now = new Date().toISOString();
 
-  // Determine if spending had petty cash impact and build reversal
-  const hasPettyCashImpact =
-    spending.paymentSource === "project_petty_cash" ||
-    (spending.paymentSource === "external" && spending.pettyCashCutIdr > 0);
-
-  const reversals: Array<typeof pettyCashMutations.$inferInsert> = [];
-  if (hasPettyCashImpact) {
-    const origDirection = spending.paymentSource === "project_petty_cash" ? "out" : "in";
-    const origAmount =
-      spending.paymentSource === "project_petty_cash"
-        ? spending.amountIdr
-        : spending.pettyCashCutIdr;
-
-    const rev = await buildReversalMutations(db, {
+    const reversal = await buildReversalMutation(db, {
       projectId: spending.projectId,
       spendingId: id,
-      originalDirection: origDirection,
-      originalAmount: origAmount,
+      amountIdr: spending.amountIdr,
       note: `Void reversal: ${voidReason}`,
       createdBy: actor.id,
     });
-    reversals.push(...rev);
-  }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await db.batch([
-    db
-      .update(spendings)
-      .set({ voidedAt: now, voidedBy: actor.id, voidReason, updatedAt: now })
-      .where(eq(spendings.id, id)),
-    ...reversals.map((m) => db.insert(pettyCashMutations).values(m)),
-  ] as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await db.batch([
+      db
+        .update(spendings)
+        .set({ voidedAt: now, voidedBy: actor.id, voidReason, updatedAt: now })
+        .where(eq(spendings.id, id)),
+      db.insert(projectBalanceMutations).values(reversal),
+    ] as any);
 
-  await writeAuditLog(db, {
-    actorUserId: actor.id,
-    action: "spending.void",
-    entityType: "spending",
-    entityId: id,
-    before: spending,
-    after: { voidedAt: now, voidedBy: actor.id, voidReason },
-  });
+    await writeAuditLog(db, {
+      actorUserId: actor.id,
+      action: "spending.void",
+      entityType: "spending",
+      entityId: id,
+      before: spending,
+      after: { voidedAt: now, voidedBy: actor.id, voidReason },
+    });
 
-  return c.json({ data: { ok: true } });
-});
+    return c.json({ data: { ok: true } });
+  },
+);

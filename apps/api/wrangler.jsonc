@@ -9,7 +9,8 @@
     {
       "binding": "DB",
       "database_name": "financing-app",
-      "database_id": "47a8483c-4fcf-46f6-bb74-b5c9f8049d3f"
+      "database_id": "47a8483c-4fcf-46f6-bb74-b5c9f8049d3f",
+      "migrations_dir": "../../packages/db/migrations"
     }
   ],
 

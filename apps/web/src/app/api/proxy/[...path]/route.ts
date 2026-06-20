@@ -3,10 +3,7 @@ import { type NextRequest, NextResponse } from "next/server";
 // Server-side proxy target — never exposed to the client
 const API_BASE = "https://financing-app-api.christianviali0.workers.dev";
 
-async function handler(
-  req: NextRequest,
-  { params }: { params: Promise<{ path: string[] }> },
-) {
+async function handler(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
   const { path } = await params;
   const apiPath = path.join("/");
   const search = req.nextUrl.search;

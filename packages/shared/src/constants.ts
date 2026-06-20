@@ -6,7 +6,6 @@ export const ROLES = ["admin", "staff"] as const;
 export const USER_STATUSES = ["active", "disabled"] as const;
 export const PROJECT_STATUSES = ["active", "archived"] as const;
 export const CATEGORY_STATUSES = ["active", "archived"] as const;
-export const PAYMENT_SOURCES = ["external", "project_petty_cash"] as const;
 export const MUTATION_DIRECTIONS = ["in", "out"] as const;
 export const AUTH_PROVIDERS = ["local"] as const;
 
@@ -17,5 +16,4 @@ export type Role = (typeof ROLES)[number];
 export type UserStatus = (typeof USER_STATUSES)[number];
 export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
 export type CategoryStatus = (typeof CATEGORY_STATUSES)[number];
-export type PaymentSource = (typeof PAYMENT_SOURCES)[number];
 export type MutationDirection = (typeof MUTATION_DIRECTIONS)[number];

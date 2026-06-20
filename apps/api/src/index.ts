@@ -8,7 +8,6 @@ import { categoriesRouter } from "./routes/categories.js";
 import { spendingsRouter } from "./routes/spendings.js";
 import { receiptsRouter } from "./routes/receipts.js";
 import { exportsRouter } from "./routes/exports.js";
-import { pettyCashRouter } from "./routes/petty-cash.js";
 import { seedAdmin } from "@repo/db/seed";
 import type { Env } from "./types/env.js";
 
@@ -43,7 +42,6 @@ app.route("/categories", categoriesRouter);
 app.route("/spendings", spendingsRouter);
 app.route("/receipts", receiptsRouter);
 app.route("/exports", exportsRouter);
-app.route("/petty-cash", pettyCashRouter);
 
 // Health check
 app.get("/health", (c) => c.json({ status: "ok", ts: new Date().toISOString() }));

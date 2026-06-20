@@ -50,20 +50,32 @@ async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
 export const api = {
   auth: {
     login: async (body: { username: string; password: string }) => {
-      const res = await apiFetch<{ data: { id: string; username: string; displayName: string; role: string; mustChangePassword: boolean; csrfToken?: string } }>(
-        "/auth/login",
-        { method: "POST", body: JSON.stringify(body) },
-      );
+      const res = await apiFetch<{
+        data: {
+          id: string;
+          username: string;
+          displayName: string;
+          role: string;
+          mustChangePassword: boolean;
+          csrfToken?: string;
+        };
+      }>("/auth/login", { method: "POST", body: JSON.stringify(body) });
       if (res.data.csrfToken) setCsrfToken(res.data.csrfToken);
       return res;
     },
     logout: () => apiFetch<{ data: { ok: boolean } }>("/auth/logout", { method: "POST" }),
     me: async () => {
-      const res = await apiFetch<{ data: import("@repo/shared").User & { csrfToken?: string } }>("/auth/me");
+      const res = await apiFetch<{ data: import("@repo/shared").User & { csrfToken?: string } }>(
+        "/auth/me",
+      );
       if (res.data.csrfToken) setCsrfToken(res.data.csrfToken);
       return res;
     },
-    changePassword: (body: { currentPassword: string; newPassword: string; confirmPassword: string }) =>
+    changePassword: (body: {
+      currentPassword: string;
+      newPassword: string;
+      confirmPassword: string;
+    }) =>
       apiFetch<{ data: { ok: boolean; csrfToken?: string } }>("/auth/change-password", {
         method: "POST",
         body: JSON.stringify(body),
@@ -72,13 +84,25 @@ export const api = {
   users: {
     list: () => apiFetch<{ data: import("@repo/shared").User[] }>("/users"),
     create: (body: unknown) =>
-      apiFetch<{ data: import("@repo/shared").User }>("/users", { method: "POST", body: JSON.stringify(body) }),
+      apiFetch<{ data: import("@repo/shared").User }>("/users", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
     update: (id: string, body: unknown) =>
-      apiFetch<{ data: { ok: boolean } }>(`/users/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+      apiFetch<{ data: { ok: boolean } }>(`/users/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
     updateRole: (id: string, role: string) =>
-      apiFetch<{ data: { ok: boolean } }>(`/users/${id}/role`, { method: "PATCH", body: JSON.stringify({ role }) }),
+      apiFetch<{ data: { ok: boolean } }>(`/users/${id}/role`, {
+        method: "PATCH",
+        body: JSON.stringify({ role }),
+      }),
     updateStatus: (id: string, status: string) =>
-      apiFetch<{ data: { ok: boolean } }>(`/users/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) }),
+      apiFetch<{ data: { ok: boolean } }>(`/users/${id}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      }),
     resetPassword: (id: string, newPassword: string) =>
       apiFetch<{ data: { ok: boolean } }>(`/users/${id}/reset-password`, {
         method: "POST",
@@ -88,17 +112,30 @@ export const api = {
   projects: {
     list: () => apiFetch<{ data: import("@repo/shared").Project[] }>("/projects"),
     get: (id: string) =>
-      apiFetch<{ data: import("@repo/shared").Project & { pettyCashBalance: number } }>(`/projects/${id}`),
+      apiFetch<{ data: import("@repo/shared").Project & { balanceIdr: number } }>(
+        `/projects/${id}`,
+      ),
     create: (body: unknown) =>
-      apiFetch<{ data: import("@repo/shared").Project }>("/projects", { method: "POST", body: JSON.stringify(body) }),
+      apiFetch<{ data: import("@repo/shared").Project }>("/projects", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
     update: (id: string, body: unknown) =>
-      apiFetch<{ data: { ok: boolean } }>(`/projects/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+      apiFetch<{ data: { ok: boolean } }>(`/projects/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
     archive: (id: string) =>
       apiFetch<{ data: { ok: boolean } }>(`/projects/${id}/archive`, { method: "POST" }),
-    pettyCash: (id: string) =>
-      apiFetch<{ data: { balance: number; mutations: import("@repo/shared").PettyCashMutation[] } }>(
-        `/projects/${id}/petty-cash`,
-      ),
+    balance: (id: string) =>
+      apiFetch<{
+        data: { balance: number; mutations: import("@repo/shared").ProjectBalanceMutation[] };
+      }>(`/projects/${id}/balance`),
+    topup: (id: string, body: { amountIdr: number; note?: string | undefined }) =>
+      apiFetch<{ data: { ok: boolean; balance: number } }>(`/projects/${id}/topup`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
   },
   categories: {
     list: () => apiFetch<{ data: import("@repo/shared").Category[] }>("/categories"),
@@ -108,7 +145,10 @@ export const api = {
         body: JSON.stringify(body),
       }),
     update: (id: string, body: unknown) =>
-      apiFetch<{ data: { ok: boolean } }>(`/categories/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+      apiFetch<{ data: { ok: boolean } }>(`/categories/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
     archive: (id: string) =>
       apiFetch<{ data: { ok: boolean } }>(`/categories/${id}/archive`, { method: "POST" }),
   },
@@ -121,7 +161,10 @@ export const api = {
         body: JSON.stringify(body),
       }),
     update: (id: string, body: unknown) =>
-      apiFetch<{ data: { ok: boolean } }>(`/spendings/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+      apiFetch<{ data: { ok: boolean } }>(`/spendings/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
     void: (id: string, voidReason: string) =>
       apiFetch<{ data: { ok: boolean } }>(`/spendings/${id}/void`, {
         method: "POST",
@@ -129,53 +172,24 @@ export const api = {
       }),
   },
   receipts: {
-    getUploadUrl: (body: { projectId: string; fileName: string; contentType: string; sizeBytes: number }) =>
+    getUploadUrl: (body: {
+      projectId: string;
+      fileName: string;
+      contentType: string;
+      sizeBytes: number;
+    }) =>
       apiFetch<{
-        data: { uploadUrl: string; objectKey: string; fileName: string; contentType: string; sizeBytes: number };
+        data: {
+          uploadUrl: string;
+          objectKey: string;
+          fileName: string;
+          contentType: string;
+          sizeBytes: number;
+        };
       }>("/receipts/upload-url", { method: "POST", body: JSON.stringify(body) }),
   },
   exports: {
     spendings: () => `${API_BASE}/exports/spendings`, // requires session cookie -> must go via proxy
-    projectPettyCash: (id: string) => `${API_BASE}/exports/projects/${id}/petty-cash`,
-  },
-  pettyCash: {
-    global: () =>
-      apiFetch<{
-        data: {
-          balance: number;
-          recentMutations: Array<{
-            id: string;
-            projectId: string;
-            projectName: string | null;
-            projectCode: string | null;
-            spendingId: string | null;
-            direction: "in" | "out";
-            amountIdr: number;
-            balanceAfterIdr: number;
-            note: string | null;
-            createdByUsername: string | null;
-            createdAt: string;
-          }>;
-        };
-      }>("/petty-cash"),
-    mutations: () =>
-      apiFetch<{
-        data: {
-          balance: number;
-          mutations: Array<{
-            id: string;
-            projectId: string;
-            projectName: string | null;
-            projectCode: string | null;
-            spendingId: string | null;
-            direction: "in" | "out";
-            amountIdr: number;
-            balanceAfterIdr: number;
-            note: string | null;
-            createdByUsername: string | null;
-            createdAt: string;
-          }>;
-        };
-      }>("/petty-cash/mutations"),
+    projectBalance: (id: string) => `${API_BASE}/exports/projects/${id}/balance-mutations`,
   },
 };
