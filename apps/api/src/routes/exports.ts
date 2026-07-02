@@ -3,6 +3,7 @@ import { eq, isNull, desc } from "drizzle-orm";
 import { spendings, projectBalanceMutations, projects, categories, users } from "@repo/db/schema";
 import writeXlsx from "write-excel-file/universal";
 import { dbMiddleware, authMiddleware } from "../middleware/auth.js";
+import { formatJakartaDate, formatJakartaDateTime } from "../lib/date.js";
 import type { AppContext } from "../types/context.js";
 
 export const exportsRouter = new Hono<AppContext>();
@@ -56,8 +57,8 @@ exportsRouter.get("/spendings", async (c) => {
     { value: r.amountIdr, type: Number, align: "right" as const },
     { value: r.createdByUsername ?? "" },
     { value: r.receiptObjectKey ?? "" },
-    { value: r.createdAt },
-    { value: r.updatedAt },
+    { value: formatJakartaDateTime(r.createdAt) },
+    { value: formatJakartaDateTime(r.updatedAt) },
   ]);
 
   const blob = await writeXlsx([[...header], ...dataRows] as unknown as Parameters<
@@ -68,7 +69,7 @@ exportsRouter.get("/spendings", async (c) => {
   return new Response(arrayBuffer, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="spendings-${new Date().toISOString().slice(0, 10)}.xlsx"`,
+      "Content-Disposition": `attachment; filename="spendings-${formatJakartaDate(new Date())}.xlsx"`,
     },
   });
 });
@@ -105,7 +106,7 @@ exportsRouter.get("/projects/:id/balance-mutations", async (c) => {
   ] as const;
 
   const dataRows = rows.map((r) => [
-    { value: r.createdAt.slice(0, 10) },
+    { value: formatJakartaDate(r.createdAt) },
     { value: r.direction },
     { value: r.amountIdr, type: Number, align: "right" as const },
     { value: r.balanceAfterIdr, type: Number, align: "right" as const },
@@ -122,7 +123,7 @@ exportsRouter.get("/projects/:id/balance-mutations", async (c) => {
   return new Response(arrayBuffer, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="balance-${id}-${new Date().toISOString().slice(0, 10)}.xlsx"`,
+      "Content-Disposition": `attachment; filename="balance-${id}-${formatJakartaDate(new Date())}.xlsx"`,
     },
   });
 });

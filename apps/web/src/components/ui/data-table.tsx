@@ -27,12 +27,14 @@ interface DataTableProps<TData> {
   columns: ColumnDef<TData>[];
   data: TData[];
   filterPlaceholder?: string;
+  onRowClick?: (row: TData) => void;
 }
 
 export function DataTable<TData>({
   columns,
   data,
   filterPlaceholder = "Search…",
+  onRowClick,
 }: DataTableProps<TData>) {
   const [globalFilter, setGlobalFilter] = useState("");
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -94,7 +96,11 @@ export function DataTable<TData>({
           <TableBody>
             {table.getRowModel().rows.length > 0 ? (
               table.getRowModel().rows.map((row) => (
-                <TableRow key={row.id}>
+                <TableRow
+                  key={row.id}
+                  onClick={() => onRowClick?.(row.original)}
+                  className={onRowClick ? "cursor-pointer hover:bg-muted/50" : undefined}
+                >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -104,7 +110,10 @@ export function DataTable<TData>({
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center text-muted-foreground">
+                <TableCell
+                  colSpan={columns.length}
+                  className="h-24 text-center text-muted-foreground"
+                >
                   No records found.
                 </TableCell>
               </TableRow>
@@ -119,7 +128,13 @@ export function DataTable<TData>({
           <p className="text-center text-sm text-muted-foreground py-8">No records found.</p>
         ) : (
           table.getRowModel().rows.map((row) => (
-            <div key={row.id} className="rounded-lg border bg-card p-4 shadow-sm space-y-2">
+            <div
+              key={row.id}
+              onClick={() => onRowClick?.(row.original)}
+              className={`rounded-lg border bg-card p-4 shadow-sm space-y-2 ${
+                onRowClick ? "cursor-pointer" : ""
+              }`}
+            >
               {row.getVisibleCells().map((cell) => {
                 const headerLabel = String(cell.column.columnDef.header ?? cell.column.id);
                 if (headerLabel === "Actions") {
@@ -131,8 +146,12 @@ export function DataTable<TData>({
                 }
                 return (
                   <div key={cell.id} className="flex justify-between gap-2 text-sm">
-                    <span className="font-medium text-muted-foreground shrink-0">{headerLabel}</span>
-                    <span className="text-right">{flexRender(cell.column.columnDef.cell, cell.getContext())}</span>
+                    <span className="font-medium text-muted-foreground shrink-0">
+                      {headerLabel}
+                    </span>
+                    <span className="text-right">
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </span>
                   </div>
                 );
               })}

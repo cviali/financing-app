@@ -1,6 +1,6 @@
 import type { DrizzleD1Database } from "@repo/db";
 import { projectBalanceMutations } from "@repo/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 export type MutationDirection = "in" | "out";
 
@@ -8,7 +8,13 @@ type MutationRow = typeof projectBalanceMutations.$inferInsert;
 
 /**
  * Returns the current balance for a project by reading `balance_after_idr`
- * from that project's most recent mutation row (ordered by created_at, id).
+ * from that project's most recent mutation row.
+ *
+ * Ordered by SQLite `rowid` (monotonic insertion order) rather than
+ * `created_at`, because several mutations produced by one operation (e.g. the
+ * reversal + new "out" of a spending edit) share the same millisecond
+ * timestamp; ordering on `created_at`/random UUID would pick the "latest" row
+ * nondeterministically. `rowid` reflects true causal insert order.
  *
  * Every insert writes `balance_after_idr` using the pre-insert project balance,
  * so the latest row's value IS the current balance — O(1) instead of O(n) SUM.
@@ -19,7 +25,7 @@ export async function getProjectBalance(db: DrizzleD1Database, projectId: string
     .select({ balanceAfterIdr: projectBalanceMutations.balanceAfterIdr })
     .from(projectBalanceMutations)
     .where(eq(projectBalanceMutations.projectId, projectId))
-    .orderBy(projectBalanceMutations.createdAt, projectBalanceMutations.id)
+    .orderBy(sql`rowid`)
     .all();
   return rows.length > 0 ? rows[rows.length - 1]!.balanceAfterIdr : 0;
 }
@@ -59,10 +65,14 @@ export async function computeSpendingMutation(
     spendingId: string;
     amountIdr: number;
     createdBy: string;
+    // When the caller already knows the effective balance (e.g. a spending edit
+    // that first reverses the old amount in the same batch), pass it here so we
+    // chain off that value instead of re-reading the not-yet-committed balance.
+    knownBalanceIdr?: number;
   },
 ): Promise<MutationRow> {
-  const { projectId, spendingId, amountIdr, createdBy } = opts;
-  const balance = await getProjectBalance(db, projectId);
+  const { projectId, spendingId, amountIdr, createdBy, knownBalanceIdr } = opts;
+  const balance = knownBalanceIdr ?? (await getProjectBalance(db, projectId));
 
   if (balance < amountIdr) {
     throw Object.assign(

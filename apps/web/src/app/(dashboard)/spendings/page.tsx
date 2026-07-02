@@ -3,12 +3,14 @@
 import { useEffect, useState, useRef } from "react";
 import { type ColumnDef } from "@tanstack/react-table";
 import { api } from "@/lib/api";
-import { formatIDR, formatDate } from "@/lib/format";
+import { formatIDR, formatDate, formatDayMonthYear, formatJakartaDateTime } from "@/lib/format";
 import { useAuth } from "@/context/auth";
 import { DataTable } from "@/components/ui/data-table";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
+import { Badge } from "@/components/ui/badge";
 import {
   Sheet,
   SheetContent,
@@ -79,17 +81,7 @@ async function uploadReceipt(
   receiptSizeBytes: number;
 } | null> {
   try {
-    const { data } = await api.receipts.getUploadUrl({
-      projectId,
-      fileName: file.name,
-      contentType: file.type as "image/jpeg" | "image/png" | "image/webp",
-      sizeBytes: file.size,
-    });
-    await fetch(data.uploadUrl, {
-      method: "PUT",
-      headers: { "Content-Type": file.type },
-      body: file,
-    });
+    const { data } = await api.receipts.upload(file, projectId, file.name);
     return {
       receiptObjectKey: data.objectKey,
       receiptFileName: data.fileName,
@@ -117,6 +109,7 @@ export default function SpendingsPage() {
   });
   const [voidReason, setVoidReason] = useState("");
   const [voiding, setVoiding] = useState(false);
+  const [detailSpending, setDetailSpending] = useState<Spending | null>(null);
   // Receipt state — file is uploaded to R2 immediately on pick; metadata is sent on submit
   const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [receiptMeta, setReceiptMeta] = useState<{
@@ -271,29 +264,31 @@ export default function SpendingsPage() {
         if (s.voidedAt) return <span className="text-xs text-muted-foreground italic">Voided</span>;
         const canEdit = user?.role === "admin" || user?.id === s.createdBy;
         return (
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={<Button variant="ghost" size="icon" className="h-8 w-8" />}
-            >
-              <MoreHorizontal className="h-4 w-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {canEdit && (
-                <DropdownMenuItem onClick={() => openEdit(s)}>Edit Spending</DropdownMenuItem>
-              )}
-              {user?.role === "admin" && (
-                <>
-                  {canEdit && <DropdownMenuSeparator />}
-                  <DropdownMenuItem
-                    variant="destructive"
-                    onClick={() => setVoidDialog({ id: s.id, open: true })}
-                  >
-                    Void Spending
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div onClick={(e) => e.stopPropagation()}>
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={<Button variant="ghost" size="icon" className="h-8 w-8" />}
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {canEdit && (
+                  <DropdownMenuItem onClick={() => openEdit(s)}>Edit Spending</DropdownMenuItem>
+                )}
+                {user?.role === "admin" && (
+                  <>
+                    {canEdit && <DropdownMenuSeparator />}
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onClick={() => setVoidDialog({ id: s.id, open: true })}
+                    >
+                      Void Spending
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         );
       },
     },
@@ -331,7 +326,12 @@ export default function SpendingsPage() {
           {loading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
           ) : (
-            <DataTable columns={columns} data={spendings} filterPlaceholder="Search spendings…" />
+            <DataTable
+              columns={columns}
+              data={spendings}
+              filterPlaceholder="Search spendings…"
+              onRowClick={setDetailSpending}
+            />
           )}
         </CardContent>
       </Card>
@@ -454,11 +454,10 @@ export default function SpendingsPage() {
                     <FormItem>
                       <FormLabel>Date</FormLabel>
                       <FormControl>
-                        <Input
-                          type="date"
+                        <DatePicker
+                          value={field.value}
+                          onChange={field.onChange}
                           className="w-full"
-                          {...field}
-                          value={field.value ?? ""}
                         />
                       </FormControl>
                       <FormMessage />
@@ -615,6 +614,108 @@ export default function SpendingsPage() {
             </Button>
             <Button type="button" variant="outline" onClick={() => setSheetMode(null)}>
               Cancel
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Detail Sheet (read-only) */}
+      <Sheet open={detailSpending !== null} onOpenChange={(o) => !o && setDetailSpending(null)}>
+        <SheetContent className="sm:max-w-md flex flex-col p-0 gap-0">
+          <SheetHeader className="px-6 py-5 border-b">
+            <SheetTitle>Spending Detail</SheetTitle>
+            <SheetDescription>Full details for this spending transaction.</SheetDescription>
+          </SheetHeader>
+
+          {detailSpending && (
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+              {detailSpending.voidedAt && (
+                <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 space-y-1">
+                  <Badge variant="destructive">Voided</Badge>
+                  {detailSpending.voidReason && (
+                    <p className="text-sm text-muted-foreground">{detailSpending.voidReason}</p>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Project</p>
+                <p className="text-sm font-medium">
+                  {(() => {
+                    const p = projects.find((x) => x.id === detailSpending.projectId);
+                    return p ? `${p.name} (${p.code})` : detailSpending.projectId;
+                  })()}
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Category</p>
+                <p className="text-sm font-medium">
+                  {categories.find((x) => x.id === detailSpending.categoryId)?.name ??
+                    detailSpending.categoryId}
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Amount</p>
+                <p className="text-sm font-semibold tabular-nums">
+                  {formatIDR(detailSpending.amountIdr)}
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Date</p>
+                <p className="text-sm">{formatDayMonthYear(detailSpending.spendingDate)}</p>
+              </div>
+
+              {detailSpending.description && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Description</p>
+                  <p className="text-sm">{detailSpending.description}</p>
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Created by</p>
+                <p className="text-sm">
+                  {detailSpending.createdByUsername ?? detailSpending.createdBy}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Created</p>
+                  <p className="text-xs">{formatJakartaDateTime(detailSpending.createdAt)}</p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground">Updated</p>
+                  <p className="text-xs">{formatJakartaDateTime(detailSpending.updatedAt)}</p>
+                </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <p className="text-xs text-muted-foreground">Receipt</p>
+                {detailSpending.receiptObjectKey ? (
+                  <img
+                    src={api.receipts.view(detailSpending.receiptObjectKey)}
+                    alt={detailSpending.receiptFileName ?? "Receipt"}
+                    className="rounded-md border max-h-96 w-full object-contain"
+                  />
+                ) : (
+                  <p className="text-sm text-muted-foreground">No receipt attached</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="border-t px-6 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => setDetailSpending(null)}
+            >
+              Close
             </Button>
           </div>
         </SheetContent>

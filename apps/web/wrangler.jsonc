@@ -8,6 +8,7 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  "services": [{ "binding": "API_SERVICE", "service": "financing-app-api" }],
   "vars": {
     "NEXT_PUBLIC_API_URL": "https://financing-app-api.christianviali0.workers.dev"
   }

@@ -1,6 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 
-// Server-side proxy target — never exposed to the client
+// Server-side proxy target — never exposed to the client.
+// NOTE: a plain fetch() to this hostname from *inside* another Worker on the same
+// account gets intercepted by Cloudflare's edge (same-zone workers.dev loop
+// prevention) and never reaches the API Worker at all — it silently 404s instead
+// of throwing, which is invisible in wrangler tail. We must call the API via the
+// `API_SERVICE` service binding (apps/web/wrangler.jsonc) instead of raw fetch.
 const API_BASE = "https://financing-app-api.christianviali0.workers.dev";
 
 async function handler(req: NextRequest, { params }: { params: Promise<{ path: string[] }> }) {
@@ -20,7 +26,8 @@ async function handler(req: NextRequest, { params }: { params: Promise<{ path: s
   const hasBody = req.method !== "GET" && req.method !== "HEAD";
   const body = hasBody ? await req.arrayBuffer() : undefined;
 
-  const apiRes = await fetch(url, {
+  const { env } = await getCloudflareContext({ async: true });
+  const apiRes = await env.API_SERVICE.fetch(url, {
     method: req.method,
     headers: forwardHeaders,
     ...(hasBody && body !== undefined ? { body } : {}),
@@ -37,7 +44,7 @@ async function handler(req: NextRequest, { params }: { params: Promise<{ path: s
       // localhost) — browsers silently drop Secure cookies on an insecure connection.
       const cleaned = value
         .split(";")
-        .filter((part) => {
+        .filter((part: string) => {
           const trimmed = part.trim().toLowerCase();
           if (trimmed.startsWith("domain")) return false;
           if (!isHttps && trimmed === "secure") return false;

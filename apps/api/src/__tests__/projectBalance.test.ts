@@ -100,6 +100,53 @@ describe("computeSpendingMutation", () => {
   });
 });
 
+describe("computeSpendingMutation with knownBalanceIdr (spending edit)", () => {
+  // Simulates the PATCH edit path: an in-batch reversal has credited the old
+  // amount back, so the new "out" row must chain off that credited balance, not
+  // a fresh DB read (which cannot see the not-yet-committed reversal).
+  it("chains the new deduction off the reversal balance, not the stale DB read", async () => {
+    // DB still shows the pre-edit balance (200000) because the reversal is
+    // uncommitted. Old amount was 100000, so effective balance = 300000.
+    const db = makeMockDb(buildLedger([{ direction: "in", amount: 200000 }])); // stale read = 200000
+    const mutation = await computeSpendingMutation(db, {
+      projectId: "p1",
+      spendingId: "s1",
+      amountIdr: 150000,
+      createdBy: "u1",
+      knownBalanceIdr: 300000, // reversal.balanceAfterIdr
+    });
+    expect(mutation.direction).toBe("out");
+    expect(mutation.balanceAfterIdr).toBe(150000); // 300000 - 150000, NOT 200000 - 150000
+  });
+
+  it("validates against the known (post-reversal) balance so a legit increase is not rejected", async () => {
+    // Stale DB read = 50000 would wrongly 422 a raise to 130000; effective
+    // balance after reversing the old 100000 is 150000, so it must pass.
+    const db = makeMockDb(buildLedger([{ direction: "in", amount: 50000 }])); // stale read = 50000
+    const mutation = await computeSpendingMutation(db, {
+      projectId: "p1",
+      spendingId: "s1",
+      amountIdr: 130000,
+      createdBy: "u1",
+      knownBalanceIdr: 150000,
+    });
+    expect(mutation.balanceAfterIdr).toBe(20000); // 150000 - 130000
+  });
+
+  it("still rejects when the known balance is insufficient", async () => {
+    const db = makeMockDb(buildLedger([{ direction: "in", amount: 999999 }]));
+    await expect(
+      computeSpendingMutation(db, {
+        projectId: "p1",
+        spendingId: "s1",
+        amountIdr: 200000,
+        createdBy: "u1",
+        knownBalanceIdr: 100000,
+      }),
+    ).rejects.toMatchObject({ status: 422 });
+  });
+});
+
 describe("buildReversalMutation", () => {
   it("creates an IN mutation adding back the original amount", async () => {
     // Ledger: 200000 in, 100000 out → balance = 100000

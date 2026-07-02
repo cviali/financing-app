@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "financing-app-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-06-14",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "financing-app",
+      "database_id": "47a8483c-4fcf-46f6-bb74-b5c9f8049d3f",
+      "migrations_dir": "../../packages/db/migrations"
+    }
+  ],
+
+  "r2_buckets": [
+    {
+      "binding": "RECEIPTS_BUCKET",
+      "bucket_name": "financing-app-receipts"
+    }
+  ],
+
+  "vars": {
+    "ENVIRONMENT": "production",
+    "CORS_ORIGIN": "https://financing-app-web.christianviali0.workers.dev"
+  }
+}

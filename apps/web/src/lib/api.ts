@@ -172,21 +172,36 @@ export const api = {
       }),
   },
   receipts: {
-    getUploadUrl: (body: {
-      projectId: string;
-      fileName: string;
-      contentType: string;
-      sizeBytes: number;
-    }) =>
-      apiFetch<{
+    upload: async (file: File, projectId: string, fileName: string) => {
+      const headers = new Headers();
+      headers.set("Content-Type", file.type);
+      headers.set("X-CSRF-Token", getCsrfToken());
+
+      const query = new URLSearchParams({ projectId, fileName }).toString();
+      const res = await fetch(`${API_BASE}/receipts/upload?${query}`, {
+        method: "POST",
+        headers,
+        credentials: "include",
+        body: file,
+      });
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: res.statusText }));
+        throw Object.assign(new Error((body as { error?: string }).error ?? "Upload failed"), {
+          status: res.status,
+        });
+      }
+
+      return res.json() as Promise<{
         data: {
-          uploadUrl: string;
           objectKey: string;
           fileName: string;
           contentType: string;
           sizeBytes: number;
         };
-      }>("/receipts/upload-url", { method: "POST", body: JSON.stringify(body) }),
+      }>;
+    },
+    view: (objectKey: string) => `${API_BASE}/receipts/view?key=${encodeURIComponent(objectKey)}`, // requires session cookie -> must go via proxy
   },
   exports: {
     spendings: () => `${API_BASE}/exports/spendings`, // requires session cookie -> must go via proxy

@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { errorMiddleware } from "./middleware/error.js";
+import { errorHandler } from "./middleware/error.js";
 import { authRouter } from "./routes/auth.js";
 import { usersRouter } from "./routes/users.js";
 import { projectsRouter } from "./routes/projects.js";
@@ -13,7 +13,12 @@ import type { Env } from "./types/env.js";
 
 const app = new Hono<{ Bindings: Env }>();
 
-app.use("*", errorMiddleware);
+// NOTE: must be `app.onError()`, not `app.use("*", someMiddleware)`. Hono's
+// `compose()` catches thrown Errors at the innermost middleware/route layer
+// and invokes `app.errorHandler` directly there — it never lets the exception
+// propagate as a rejected promise through outer `app.use()` middleware's own
+// try/catch. See middleware/error.ts for the full explanation.
+app.onError(errorHandler);
 
 app.use(
   "*",

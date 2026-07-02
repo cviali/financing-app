@@ -44,6 +44,7 @@ export interface Spending {
   receiptContentType: string | null;
   receiptSizeBytes: number | null;
   createdBy: string;
+  createdByUsername: string | null;
   updatedBy: string | null;
   createdAt: string;
   updatedAt: string;

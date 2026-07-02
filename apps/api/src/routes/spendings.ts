@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { eq, and, isNull, desc } from "drizzle-orm";
-import { spendings, projectBalanceMutations, projects, categories } from "@repo/db/schema";
+import { spendings, projectBalanceMutations, projects, categories, users } from "@repo/db/schema";
 import {
   createSpendingSchema,
   updateSpendingSchema,
@@ -22,8 +22,28 @@ spendingsRouter.get("/", async (c) => {
   const db = c.get("db");
   // Intentionally load all non-voided by default; callers can filter
   const all = await db
-    .select()
+    .select({
+      id: spendings.id,
+      projectId: spendings.projectId,
+      categoryId: spendings.categoryId,
+      amountIdr: spendings.amountIdr,
+      description: spendings.description,
+      spendingDate: spendings.spendingDate,
+      receiptObjectKey: spendings.receiptObjectKey,
+      receiptFileName: spendings.receiptFileName,
+      receiptContentType: spendings.receiptContentType,
+      receiptSizeBytes: spendings.receiptSizeBytes,
+      createdBy: spendings.createdBy,
+      createdByUsername: users.username,
+      updatedBy: spendings.updatedBy,
+      createdAt: spendings.createdAt,
+      updatedAt: spendings.updatedAt,
+      voidedAt: spendings.voidedAt,
+      voidedBy: spendings.voidedBy,
+      voidReason: spendings.voidReason,
+    })
     .from(spendings)
+    .leftJoin(users, eq(spendings.createdBy, users.id))
     .where(isNull(spendings.voidedAt))
     .orderBy(desc(spendings.spendingDate), desc(spendings.createdAt))
     .all();
@@ -123,6 +143,28 @@ spendingsRouter.patch("/:id", zValidator("json", updateSpendingSchema), async (c
   const newAmountIdr = body.amountIdr ?? spending.amountIdr;
   const projectId = body.projectId ?? spending.projectId;
 
+  // Validate a newly-targeted project/category exists and is not archived
+  // (create does this; edit must too, or a spending can be moved onto an
+  // archived/nonexistent project and silently bypass those guards).
+  if (body.projectId && body.projectId !== spending.projectId) {
+    const nextProject = await db
+      .select()
+      .from(projects)
+      .where(eq(projects.id, body.projectId))
+      .get();
+    if (!nextProject) return c.json({ error: "Project not found" }, 404);
+    if (nextProject.status === "archived") return c.json({ error: "Project is archived" }, 422);
+  }
+  if (body.categoryId && body.categoryId !== spending.categoryId) {
+    const nextCategory = await db
+      .select()
+      .from(categories)
+      .where(eq(categories.id, body.categoryId))
+      .get();
+    if (!nextCategory) return c.json({ error: "Category not found" }, 404);
+    if (nextCategory.status === "archived") return c.json({ error: "Category is archived" }, 422);
+  }
+
   const impactChanged = newAmountIdr !== spending.amountIdr || projectId !== spending.projectId;
 
   const mutations: Array<typeof projectBalanceMutations.$inferInsert> = [];
@@ -137,11 +179,18 @@ spendingsRouter.patch("/:id", zValidator("json", updateSpendingSchema), async (c
     });
     mutations.push(reversal);
 
+    // When the deduction stays on the same project, the reversal above (not yet
+    // committed) has already credited the old amount back. Chain off its
+    // balanceAfterIdr so the new "out" row and its 422 check reflect the credit;
+    // a fresh getProjectBalance read here would miss it. A different project
+    // reads its own balance normally.
+    const sameProject = projectId === spending.projectId;
     const newMutation = await computeSpendingMutation(db, {
       projectId,
       spendingId: id,
       amountIdr: newAmountIdr,
       createdBy: actor.id,
+      ...(sameProject ? { knownBalanceIdr: reversal.balanceAfterIdr } : {}),
     });
     mutations.push(newMutation);
   }
